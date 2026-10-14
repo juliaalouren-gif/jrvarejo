@@ -43,7 +43,7 @@ function selectVariant(element, type) {
         const val = element.getAttribute('data-value');
         currentSelectedLight = val;
         if (val === 'warm') {
-            updateMainImage('luminaria-warm.jpg', document.querySelector('.thumb:nth-child(1)'));
+            updateMainImage('treslumi.jpg', document.querySelector('.thumb:nth-child(1)'));
         } else {
             updateMainImage('luminaria-white.jpg', document.querySelector('.thumb:nth-child(2)'));
         }
@@ -52,9 +52,9 @@ function selectVariant(element, type) {
 
 // Current globally selected price for dropdown use
 // Defaults match the active kit on page load (Pague 1 Leve 2)
-let currentSelectedPrice = 87.90;
+let currentSelectedPrice = 107.90;
 let currentSelectedQty = 2;
-let currentSelectedOldPrice = 129.90;
+let currentSelectedOldPrice = 137.00;
 let currentSelectedLight = 'warm';
 window.currentSelectedPrice = currentSelectedPrice;
 window.currentSelectedQty = currentSelectedQty;
@@ -63,8 +63,8 @@ window.currentSelectedLight = currentSelectedLight;
 
 // Kit selection state
 let currentKitBaseQty = 2;
-let currentKitBasePrice = 87.90;
-let currentKitBaseOldPrice = 129.90;
+let currentKitBasePrice = 107.90;
+let currentKitBaseOldPrice = 137.00;
 let currentKitMultiplier = 1;
 
 // Wire "Comprar Agora" button to checkout page
@@ -92,7 +92,7 @@ window.handleCheckout = function() {
         oldPrice: currentSelectedOldPrice,
         light: currentSelectedLight,
     });
-    window.location.href = `checkout.html?${params.toString()}`;
+    window.openCartDrawer(params);
 };
 
 // Quantity and Price Logic

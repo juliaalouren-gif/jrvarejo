@@ -65,7 +65,7 @@
             z-index: 200;
             box-shadow: 0 2px 12px rgba(0,0,0,0.18);
         }
-        .checkout-header img { height: 36px; }
+        .checkout-header img { width: 200px; max-width: 50vw; height: auto; }
         .secure-badge {
             display: flex;
             align-items: center;
@@ -783,7 +783,7 @@
 </div>
 
 <header class="checkout-header">
-    <img src="logo-solare-checkout.png" alt="Solare">
+    <img src="loooojr-branca.png" alt="JR Varejista">
     <div class="secure-badge"><i class="fas fa-lock"></i> Checkout Seguro</div>
 </header>
 
@@ -791,7 +791,7 @@
 <section class="offer-banner">
     <div class="offer-inner">
         <p class="offer-body">
-            <span class="offer-headline">🎉 Parabéns!!</span> <span class="hl-white">Você Ganhou 90 dias de Garantia + <span class="hl-pix">5% de desconto no Pix</span></span>
+            <span class="offer-headline">🎉 Parabéns!!</span> <span class="hl-white">Você Ganhou 90 dias de Garantia + <span class="hl-pix">5% de desconto no Pix ao levar um adicional</span></span>
         </p>
         <span class="offer-urgency"><strong><em>Último dia de Frete Grátis</em></strong> para a sua região</span>
     </div>
@@ -989,7 +989,7 @@
                 <div class="payment-tabs">
                     <button class="tab-btn active" id="tab-pix" onclick="setPaymentType('pix')">
                         <svg viewBox="0 0 100 38" height="15" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="vertical-align:middle;margin-right:3px"><path fill="#32BCAD" d="M14.5 8.5L8.5 14.5a2 2 0 000 2.83l6 6a2 2 0 002.83 0l6-6a2 2 0 000-2.83l-6-6a2 2 0 00-2.83 0z"/><text x="28" y="27" font-family="Arial,sans-serif" font-weight="900" font-size="22" fill="#32BCAD">pix</text></svg> Pix
-                        <span class="tab-badge">5% OFF</span>
+                        <span class="tab-badge" id="pix-tab-badge">5% OFF</span>
                     </button>
                     <button class="tab-btn" id="tab-card" onclick="setPaymentType('card')">
                         <i class="fas fa-credit-card"></i> Cartão de Crédito
@@ -1007,6 +1007,15 @@
                             <div class="bump-desc">Leve mais 2 unidades com desconto exclusivo</div>
                         </div>
                         <div class="bump-price">+ R$ 49,90</div>
+                    </div>
+                    <div class="order-bump" id="bump-refletores" onclick="toggleBump('refletores')">
+                        <div class="bump-check"><i class="fas fa-check"></i></div>
+                        <div class="bump-content">
+                            <span class="bump-badge">OFERTA ESPECIAL</span>
+                            <div class="bump-name">Leve também dois refletores solares</div>
+                            <div class="bump-desc">2 refletores solares por um preço especial</div>
+                        </div>
+                        <div class="bump-price">+ R$ 78,90</div>
                     </div>
                     <div class="order-bump" id="bump-envio" onclick="toggleBump('envio')">
                         <div class="bump-check"><i class="fas fa-check"></i></div>
@@ -1027,7 +1036,7 @@
                     <div class="mini-row" id="pay-bumps-row" style="display:none;"><span>Extras</span><span id="pay-bumps">—</span></div>
                     <div class="mini-row mini-total"><span>Total</span><span id="pay-total">R$ 8,00</span></div>
                     <div class="mini-row mini-pix" id="pay-pix-row">
-                        <span><i class="fas fa-bolt" style="color:#f97316;margin-right:4px;"></i>Com Pix (5% off)</span>
+                        <span><i class="fas fa-bolt" style="color:#f97316;margin-right:4px;"></i><span id="pay-pix-label">Com Pix (5% off)</span></span>
                         <span id="pay-pix">R$ 7,60</span>
                     </div>
                 </div>
@@ -1036,7 +1045,7 @@
                     <div class="pix-info-box">
                         <i class="fas fa-tag"></i>
                         <div>
-                            <strong>5% de desconto pagando com Pix!</strong>
+                            <strong id="pix-info-title">5% de desconto pagando com Pix!</strong>
                             <p>O QR Code será gerado na próxima tela. Você terá 30 minutos para realizar o pagamento.</p>
                         </div>
                     </div>
@@ -1097,7 +1106,7 @@
                 <i class="fas fa-chevron-down" id="summary-chevron"></i>
             </div>
             <div class="product-line">
-                <img id="sum-img" src="luminaria-warm.jpg" alt="Luminária Solare">
+                <img id="sum-img" src="treslumi.jpg" alt="Luminária Solare">
                 <div class="product-info">
                     <h4 id="sum-title">Luminária Solar Solare</h4>
                     <p id="sum-variant">1 unid. — Luz Quente</p>
@@ -1116,7 +1125,7 @@
                     </div>
                 </div>
                 <div class="pix-discount-pill">
-                    <span><i class="fas fa-bolt" style="color:#f97316;margin-right:4px;"></i>Com Pix (5% off):</span>
+                    <span><i class="fas fa-bolt" style="color:#f97316;margin-right:4px;"></i><span id="sum-pix-label">Com Pix (5% off):</span></span>
                     <span id="sum-pix-total">R$ 7,60</span>
                 </div>
             </div>
@@ -1215,8 +1224,27 @@
         el.querySelector('.bump-desc').textContent = BUMP_CONFIG.desc;
         el.querySelector('.bump-price').textContent = '+ R$ ' + BUMP_CONFIG.price.toFixed(2).replace('.', ',');
     })();
-    const BUMP_PRICES = { luminaria: BUMP_CONFIG.price, envio: 9.90 };
-    let selectedBumps  = { luminaria: false, envio: false };
+    const BUMP_PRICES = { luminaria: BUMP_CONFIG.price, refletores: 78.90, envio: 9.90 };
+    let selectedBumps  = { luminaria: false, refletores: false, envio: false };
+
+    // Adicionais escolhidos no carrinho lateral (cart-drawer.js) já chegam marcados
+    (urlParams.get('bumps') || '').split(',').forEach(function(key) {
+        if (!(key in selectedBumps)) return;
+        selectedBumps[key] = true;
+        const el = document.getElementById('bump-' + key);
+        if (el) el.classList.add('selected');
+    });
+
+    // O desconto de 5% no Pix só vale levando um adicional do carrinho
+    // (mesma regra de lib/order-pricing.js no servidor)
+    function hasPixDiscount() {
+        return selectedBumps.luminaria || selectedBumps.refletores;
+    }
+
+    function getPixTotal() {
+        const base = price + selectedShippingPrice;
+        return Math.round(((hasPixDiscount() ? base * 0.95 : base) + getBumpTotal()) * 100) / 100;
+    }
 
     function getBumpTotal() {
         return Object.entries(selectedBumps)
@@ -1243,7 +1271,8 @@
         const bumpTotal = getBumpTotal();
         const baseTotal = sub + selectedShippingPrice;
         const total     = baseTotal + bumpTotal;
-        const pixTotal  = baseTotal * 0.95 + bumpTotal;
+        const pixTotal  = getPixTotal();
+        const pixOn     = hasPixDiscount();
         const shipTxt   = selectedShippingPrice === 0 ? 'Grátis' : fmt(selectedShippingPrice);
 
         // Variant label
@@ -1268,6 +1297,17 @@
         if (payPix) payPix.textContent = fmt(pixTotal);
         if (payBumpsRow) payBumpsRow.style.display = bumpTotal > 0 ? 'flex' : 'none';
         if (payBumpsEl) payBumpsEl.textContent = fmt(bumpTotal);
+
+        // Textos do desconto Pix conforme a regra do adicional
+        const pixHint = 'Adicione um item acima e ganhe 5% no Pix';
+        document.getElementById('pix-tab-badge').style.display = pixOn ? '' : 'none';
+        document.getElementById('pay-pix-label').textContent = pixOn ? 'Com Pix (5% off)' : pixHint;
+        if (payPix) payPix.style.display = pixOn ? '' : 'none';
+        document.getElementById('sum-pix-label').textContent = pixOn ? 'Com Pix (5% off):' : 'Adicione um item e ganhe 5% no Pix';
+        document.getElementById('sum-pix-total').style.display = pixOn ? '' : 'none';
+        document.getElementById('pix-info-title').textContent = pixOn
+            ? '5% de desconto aplicado no Pix!'
+            : 'Adicione um item ao pedido e ganhe 5% de desconto no Pix';
     }
 
     updateTotalDisplay();
@@ -1281,7 +1321,7 @@
         document.getElementById('sum-img').src = light === 'warm' ? 'jardim-principal.jpg' : 'jardim-frente.jpg';
         document.getElementById('sum-title').textContent = 'Luminária Solar Externa de Jardim';
     } else {
-        document.getElementById('sum-img').src = light === 'warm' ? 'luminaria-warm.jpg' : 'luminaria-white.jpg';
+        document.getElementById('sum-img').src = light === 'warm' ? 'treslumi.jpg' : 'luminaria-white.jpg';
     }
 
     // ── RESUMO COLAPSÁVEL ──────────────────────────────────
@@ -1758,7 +1798,7 @@
                     },
                     quantity: qty,
                     lightColor: light,
-                    totalPrice: Math.round(((price + selectedShippingPrice) * 0.95 + getBumpTotal()) * 100) / 100,
+                    totalPrice: getPixTotal(),
                     paymentMethodId: 'pix',
                     shippingMethod: selectedShippingName,
                     shippingPrice: selectedShippingPrice,
@@ -1769,7 +1809,7 @@
             });
             const result = await res.json();
             if (res.ok && result.qr_code) {
-                const pixTotal = Math.round(((price + selectedShippingPrice) * 0.95 + getBumpTotal()) * 100) / 100;
+                const pixTotal = getPixTotal();
                 const reminderParam    = result.pix_reminder_id    ? `&reminder_id=${encodeURIComponent(result.pix_reminder_id)}`       : '';
                 const reminder2hParam  = result.pix_reminder_2h_id ? `&reminder_2h_id=${encodeURIComponent(result.pix_reminder_2h_id)}` : '';
                 const reminder4hParam  = result.pix_reminder_4h_id ? `&reminder_4h_id=${encodeURIComponent(result.pix_reminder_4h_id)}` : '';

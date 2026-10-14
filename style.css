@@ -118,19 +118,21 @@ header {
 }
 
 .logo img {
-    height: 45px;
-    width: auto;
+    width: 260px;
+    max-width: 52vw;
+    height: auto;
     display: block;
 }
 
 .nav-logo-mobile img {
-    height: 40px;
-    width: auto;
+    width: 200px;
+    max-width: 100%;
+    height: auto;
     display: block;
 }
 
 .copyright-logo {
-    height: 18px;
+    height: 14px;
     width: auto;
     vertical-align: middle;
 }
@@ -413,9 +415,14 @@ nav a {
 
 .buy-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 40px;
     align-items: start;
+}
+
+.buy-gallery,
+.buy-options {
+    min-width: 0;
 }
 
 .buy-gallery {
@@ -426,6 +433,8 @@ nav a {
 
 .main-gallery-img img {
     width: 100%;
+    height: auto;
+    display: block;
     border-radius: 16px;
 }
 
@@ -1760,6 +1769,12 @@ footer {
     flex: 1;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+/* Condição do desconto Pix ("levando um item adicional no carrinho") sempre em linha própria */
+.pix-content .pix-cond {
+    flex-basis: 100%;
 }
 
 .pix-text {

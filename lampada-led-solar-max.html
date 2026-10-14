@@ -23,7 +23,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Montserrat:wght@400;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Montserrat:wght@400;700&display=swap" rel="stylesheet"></noscript>
-    <link rel="stylesheet" href="style.css?v=1.9">
+    <link rel="stylesheet" href="style.css?v=2.1">
     <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet" media="print" onload="this.media='all'">
     <noscript><link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet"></noscript>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" media="print" onload="this.media='all'">
@@ -53,10 +53,10 @@
             <button class="menu-toggle" onclick="toggleMobileMenu()">
                 <i class="fas fa-bars"></i>
             </button>
-            <div class="logo"><img src="logo-solare.png" alt="Solare Premium"></div>
+            <div class="logo"><img src="loooojr.png" alt="JR Varejista"></div>
             <nav id="main-nav">
                 <div class="nav-logo-mobile">
-                    <img src="logo-solare.png" alt="Solare Premium">
+                    <img src="loooojr.png" alt="JR Varejista">
                 </div>
                 <a href="#home" onclick="toggleMobileMenu()">🏠 Início</a>
                 <a href="https://wa.me/5521975605337" target="_blank">📞 Entre em contato</a>
@@ -228,6 +228,7 @@
                                             </svg>
                                             <div class="pix-content">
                                                 <span class="pix-text"><strong>R$ <span id="pix-price">83,51</span></strong> no Pix <span class="pix-badge">5% OFF</span></span>
+                                                <span class="pix-cond" style="display:block;font-size:12px;color:#6b7280;margin-top:2px;">levando um item adicional no carrinho</span>
                                             </div>
                                         </div>
 
@@ -824,12 +825,13 @@
         </div>
 
         <div class="copyright">
-            Direitos de Autor &copy; 2026 <a href="index.html" style="color: inherit; text-decoration: none; font-weight: 700;"><img src="logo-solare.png" alt="Solare Premium" class="copyright-logo" loading="lazy"></a>.
+            Direitos de Autor &copy; 2026 <a href="index.html" style="color: inherit; text-decoration: none; font-weight: 700;"><img src="loooojr-branca.png" alt="JR Varejista" class="copyright-logo" loading="lazy"></a>.
         </div>
     </footer>
 
     <script src="https://unpkg.com/aos@2.3.1/dist/aos.js" defer></script>
-    <script src="script.js?v=1.9" defer></script>
+    <script src="script.js?v=2.4" defer></script>
+    <script src="cart-drawer.js?v=1.4" defer></script>
     <script>
     window.addEventListener('DOMContentLoaded', function() {
         // Override kit defaults — script.js initializes qty=2/price=78.90; this product is different
@@ -872,7 +874,7 @@
                 light: 'warm',
                 product: 'lampada-led',
             });
-            window.location.href = 'checkout.html?' + params.toString();
+            window.openCartDrawer(params);
         };
     });
     </script>

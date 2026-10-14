@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { notifyPaymentApproved, schedulePostPurchaseEmails } from '../lib/send-notification.js';
 import { sendMetaEvent } from '../lib/meta-capi.js';
 import { sendWhatsApp } from '../lib/whatsapp.js';
-import { expectedOrderTotal } from '../lib/order-pricing.js';
+import { expectedOrderTotal, hasPixDiscount } from '../lib/order-pricing.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -42,7 +42,7 @@ export default async function handler(req, res) {
 
     // Server-side bump price map — luminaria price varies by product
     const luminariaPrice = productType === 'led' ? 59.90 : 49.90;
-    const BUMP_PRICES_SERVER = { luminaria: luminariaPrice, envio: 9.90, garantia: 5.90 };
+    const BUMP_PRICES_SERVER = { luminaria: luminariaPrice, refletores: 78.90, envio: 9.90, garantia: 5.90 };
     const serverBumpTotal = (bumps) => {
       if (!bumps || typeof bumps !== 'object') return 0;
       return Object.entries(BUMP_PRICES_SERVER)
@@ -73,7 +73,7 @@ export default async function handler(req, res) {
       quantity:      parsedQty,
       shippingPrice: shippingPrice,
       bumpTotal,
-      isPix:         paymentMethodId === 'pix',
+      pixDiscount:   hasPixDiscount(paymentMethodId === 'pix', orderBumps),
     });
     if (expectedTotal === null || Math.abs(parsedTotal - expectedTotal) > 0.01) {
       console.warn('[Preço] Pedido recusado por divergência', {
