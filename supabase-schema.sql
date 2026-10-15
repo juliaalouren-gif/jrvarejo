@@ -1,5 +1,5 @@
 -- ============================================================
--- Solare — Schema Supabase
+-- JR Varejista — Schema Supabase
 -- Executar no SQL Editor: supabase.com → seu projeto → SQL Editor → New Query
 -- ============================================================
 
@@ -47,11 +47,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_mp_payment_id   ON orders (mp_payment_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status           ON orders (status);
 CREATE INDEX IF NOT EXISTS idx_orders_customer_email   ON orders (customer_email);
 
--- Enable Row Level Security
+-- Row Level Security ligado e SEM policies: só o backend (service role, que
+-- ignora o RLS) acessa os pedidos. Uma policy "USING (true)" sem "TO" valeria
+-- para todos os papéis, inclusive a chave pública (anon), e exporia CPF,
+-- e-mail, telefone e endereço dos clientes.
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-
--- Service role (backend) can do everything
-CREATE POLICY "Service role full access"
-  ON orders
-  USING (true)
-  WITH CHECK (true);
