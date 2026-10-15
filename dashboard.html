@@ -249,6 +249,19 @@
     .filters { flex-direction: column; }
     .filter-group input, .filter-group select { min-width: unset; width: 100%; }
   }
+  /* ── Composição da compra (kit / carrinho / order bump / upsell) ── */
+  .buy { min-width: 250px; font-size: 12px; line-height: 1.45; }
+  .buy-kit { font-weight: 700; color: var(--primary-dark); }
+  .buy-kit small { display: block; font-weight: 500; color: var(--muted); }
+  .buy-line { display: flex; gap: 6px; align-items: baseline; margin-top: 5px; padding: 4px 7px; border-radius: 7px; }
+  .buy-line b { white-space: nowrap; margin-left: auto; }
+  .buy-tag { font-size: 10px; font-weight: 800; letter-spacing: .3px; text-transform: uppercase; white-space: nowrap; }
+  .buy-cart   { background: #eff6ff; color: #1e40af; }
+  .buy-bump   { background: #faf5ff; color: #6b21a8; }
+  .buy-upsell { background: #fff7ed; color: #9a3412; }
+  .buy-pix    { color: var(--muted); font-size: 11px; margin-top: 4px; }
+  .buy-none   { color: var(--muted); font-size: 11px; margin-top: 4px; }
+  .upsell-row-tag { display: inline-block; background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; font-weight: 800; font-size: 11px; padding: 3px 8px; border-radius: 6px; }
 </style>
 </head>
 <body>
@@ -346,7 +359,7 @@
               <th>Cliente</th>
               <th>Telefone</th>
               <th>Endereço</th>
-              <th>Qtd</th>
+              <th>Compra</th>
               <th>Cor</th>
               <th>Valor</th>
               <th>Frete</th>
@@ -594,8 +607,8 @@
         </td>
         <td class="nowrap">${esc(o.customer_phone || '—')}</td>
         <td style="font-size:12px;line-height:1.6">${fmtAddress(o.customer_address)}</td>
-        <td style="text-align:center;font-weight:700">${o.product_quantity || '—'}</td>
-        <td style="font-size:12px">${esc(o.product_light_color || '—')}</td>
+        <td>${purchaseCell(o)}</td>
+        <td style="font-size:12px">${esc(({ warm: 'Luz quente', white: 'Luz branca' })[o.product_light_color] || o.product_light_color || '—')}</td>
         <td class="nowrap price">${fmt(o.total_price)}</td>
         <td class="nowrap" style="font-size:12px">${o.shipping_method ? esc(o.shipping_method) + (o.shipping_price ? '<br>' + fmt(o.shipping_price) : '') : '—'}</td>
         <td class="nowrap">${methodBadge(o.payment_method)}</td>
@@ -617,6 +630,62 @@
         </td>
       </tr>
     `).join('');
+  }
+
+  // ── Composição da compra ──────────────────────────────────────
+  const PRODUCT_NAMES = {
+    solar: 'Luminária Solar de Parede', led: 'Kit Luminária LED Sem Fio',
+    'lampada-led': 'Lâmpada LED Solar Max', jardim: 'Luminária Solar de Jardim',
+  };
+  function addonLabel(key, productType) {
+    if (key === 'luminaria')  return productType === 'led' ? '+3 luminárias LED' : '+2 luminárias';
+    if (key === 'refletores') return '2 refletores solares';
+    if (key === 'envio')      return 'Envio priorizado';
+    if (key === 'garantia')   return 'Garantia estendida';
+    return key;
+  }
+  const OFFER_LABELS = { upsell: 'Kit 2 luminárias (upsell)', downsell: 'Kit 2 luminárias (downsell)' };
+  function payLabel(status) {
+    return status === 'approved' ? '✅ pago' : status === 'pending' ? '⏳ pendente' : '✖ ' + (status || '');
+  }
+
+  function purchaseCell(o) {
+    const a = (typeof o.customer_address === 'string' ? JSON.parse(o.customer_address) : o.customer_address) || {};
+
+    // Linha que é a própria venda de upsell/downsell (compra extra depois do pedido principal)
+    if (a.upsell) {
+      return `<div class="buy"><span class="upsell-row-tag">⬆️ ${a.offer === 'downsell' ? 'DOWNSELL' : 'UPSELL'}</span>
+        <div class="buy-none">${esc(OFFER_LABELS[a.offer] || 'Oferta pós-compra')} — compra extra do mesmo cliente, ligada ao pedido principal</div></div>`;
+    }
+
+    const p = a.purchase;
+    let html = '<div class="buy">';
+    if (p && p.kit) {
+      const kitsTxt = p.kit.kits > 1 ? ` (${p.kit.kits} kits de ${p.kit.kitUnits})` : '';
+      html += `<div class="buy-kit">📦 ${esc(PRODUCT_NAMES[p.productType] || 'Produto')}
+        <small>Kit ${p.kit.units} unidades${kitsTxt} · ${fmt(p.kit.price)}</small></div>`;
+      (p.addons || []).forEach(ad => {
+        const cart = ad.origin === 'carrinho';
+        html += `<div class="buy-line ${cart ? 'buy-cart' : 'buy-bump'}">
+          <span class="buy-tag">${cart ? '🛒 Carrinho' : '➕ Order bump'}</span>
+          <span>${esc(addonLabel(ad.key, p.productType))}</span><b>${fmt(ad.price)}</b></div>`;
+      });
+      if (p.pixDiscount > 0) html += `<div class="buy-pix">Desconto Pix (5%): −${fmt(p.pixDiscount)}</div>`;
+    } else {
+      // Pedidos antigos, sem a composição gravada
+      html += `<div class="buy-kit">📦 ${o.product_quantity || '—'} unidades</div>`;
+      const bumps = Object.keys(a.orderBumps || {}).filter(k => a.orderBumps[k] === true);
+      if (bumps.length) html += `<div class="buy-none">Adicionais: ${bumps.map(k => esc(addonLabel(k))).join(', ')}</div>`;
+    }
+    (o.upsells || []).forEach(u => {
+      html += `<div class="buy-line buy-upsell">
+        <span class="buy-tag">⬆️ ${u.offer === 'downsell' ? 'Downsell' : 'Upsell'}</span>
+        <span>${esc(OFFER_LABELS[u.offer] || 'Oferta')} · ${payLabel(u.status)}</span><b>${fmt(u.total_price)}</b></div>`;
+    });
+    if (p && p.kit && !(p.addons || []).length && !(o.upsells || []).length) {
+      html += '<div class="buy-none">Só o kit — sem adicionais nem upsell</div>';
+    }
+    return html + '</div>';
   }
 
   function esc(str) {

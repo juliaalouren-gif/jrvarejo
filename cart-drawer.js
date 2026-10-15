@@ -250,7 +250,10 @@
     function goToCheckout() {
         var params = new URLSearchParams(state.params);
         var bumps = Object.keys(state.selected).filter(function (k) { return state.selected[k]; });
-        if (bumps.length) params.set('bumps', bumps.join(','));
+        if (bumps.length) {
+            params.set('bumps', bumps.join(','));
+            params.set('cart', bumps.join(','));   // origem: escolhidos no carrinho lateral (aparece no dashboard)
+        }
         window.location.href = 'checkout.html?' + params.toString();
     }
 

@@ -1259,6 +1259,10 @@
 
     // O desconto de 5% no Pix só vale levando um adicional do carrinho
     // (mesma regra de lib/order-pricing.js no servidor)
+    // Adicionais escolhidos no carrinho lateral (para o dashboard separar carrinho x order bump)
+    const cartAddonKeys = (urlParams.get('cart') || '').split(',').filter(k => k === 'luminaria' || k === 'refletores');
+    function getCartAddons() { return cartAddonKeys.filter(k => selectedBumps[k]); }
+
     function hasPixDiscount() {
         return selectedBumps.luminaria || selectedBumps.refletores;
     }
@@ -1785,6 +1789,7 @@
                     shippingMethod:      selectedShippingName,
                     shippingPrice:       selectedShippingPrice,
                     orderBumps:          selectedBumps,
+                    cartAddons:          getCartAddons(),
                     productName:         productName,
                     productType:         productType,
                 })
@@ -1874,6 +1879,7 @@
                     shippingMethod: selectedShippingName,
                     shippingPrice: selectedShippingPrice,
                     orderBumps: selectedBumps,
+                    cartAddons: getCartAddons(),
                     productName: productName,
                     productType: productType,
                 })

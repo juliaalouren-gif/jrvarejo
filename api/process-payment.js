@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { notifyPaymentApproved, schedulePostPurchaseEmails } from '../lib/send-notification.js';
 import { sendMetaEvent } from '../lib/meta-capi.js';
 import { sendWhatsApp } from '../lib/whatsapp.js';
-import { isValidOrderTotal, validOrderTotals } from '../lib/order-pricing.js';
+import { isValidOrderTotal, validOrderTotals, orderBreakdown } from '../lib/order-pricing.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -44,6 +44,7 @@ export default async function handler(req, res) {
       shippingMethod,
       shippingPrice,
       orderBumps,
+      cartAddons,
       deviceId,
       productName,
       productType,
@@ -201,7 +202,8 @@ export default async function handler(req, res) {
       customer_email:      customerEmail,
       customer_cpf:        customerCpf,
       customer_phone:      customerPhone,
-      customer_address:    { ...customerAddress, orderBumps: orderBumps || {} },
+      // purchase: composição da compra (kit, carrinho, order bump, frete, desconto) para o dashboard
+      customer_address:    { ...customerAddress, orderBumps: orderBumps || {}, purchase: orderBreakdown({ ...pricedOrder, cartAddons }, parsedTotal) },
       product_quantity:    quantity,
       product_light_color: lightColor,
       total_price:         totalPrice,

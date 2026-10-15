@@ -47,6 +47,27 @@ export default async function handler(req, res) {
     const { data: orders, count, error } = await ordersQ.range(offset, offset + pageSize - 1);
     if (error) throw error;
 
+    // Upsells ligados a cada pedido da página (gravados com customer_address.upsell_of = id do pedido)
+    const pageIds = (orders || []).map(o => o.id);
+    if (pageIds.length) {
+      const { data: ups, error: upErr } = await supabase
+        .from('orders')
+        .select('id, created_at, status, total_price, payment_method, customer_address')
+        .in('customer_address->>upsell_of', pageIds)
+        .order('created_at', { ascending: true });
+      if (upErr) throw upErr;
+      const byParent = {};
+      (ups || []).forEach(u => {
+        const parent = u.customer_address?.upsell_of;
+        (byParent[parent] = byParent[parent] || []).push({
+          id: u.id, created_at: u.created_at, status: u.status,
+          total_price: u.total_price, payment_method: u.payment_method,
+          offer: u.customer_address?.offer || 'upsell',
+        });
+      });
+      orders.forEach(o => { o.upsells = byParent[o.id] || []; });
+    }
+
     // ── 2. Stats respeitando filtros de data/método/busca (sem status) ──
     let statsQ = supabase
       .from('orders')
