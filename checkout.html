@@ -19,6 +19,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>Finalizar Compra — Solare</title>
     <script src="https://sdk.mercadopago.com/js/v2"></script>
+    <!-- Antifraude do Mercado Pago: identifica o aparelho (MP_DEVICE_SESSION_ID) e ajuda a aprovar cartões -->
+    <script src="https://www.mercadopago.com/v2/security.js" view="checkout"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -274,6 +276,26 @@
         .form-group input:focus, .form-group select:focus {
             border-color: var(--accent);
             box-shadow: 0 0 0 3px rgba(76,175,80,0.13);
+        }
+        /* Secure Fields do Mercado Pago: o iframe fica dentro de uma caixa com o mesmo visual dos inputs */
+        .mp-secure-field {
+            width: 100%;
+            height: 46px;
+            padding: 0 14px;
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: white;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .mp-secure-field iframe { width: 100%; height: 100%; border: 0; display: block; }
+        .mp-secure-field.focused {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(76,175,80,0.13);
+        }
+        .mp-secure-field.error {
+            border-color: var(--danger) !important;
+            box-shadow: 0 0 0 3px rgba(239,68,68,0.1);
+            background: var(--danger-light);
         }
         .form-group input.error {
             border-color: var(--danger) !important;
@@ -1060,16 +1082,16 @@
                     <form id="form-checkout" onsubmit="return false">
                         <div class="form-group">
                             <label>Número do Cartão</label>
-                            <input type="text" id="card-number" placeholder="0000 0000 0000 0000" maxlength="19" inputmode="numeric" autocomplete="cc-number">
+                            <div id="card-number" class="mp-secure-field"></div>
                         </div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Vencimento</label>
-                                <input type="text" id="card-expiry" placeholder="MM/AA" maxlength="5" inputmode="numeric" autocomplete="cc-exp">
+                                <div id="card-expiry" class="mp-secure-field"></div>
                             </div>
                             <div class="form-group">
                                 <label>CVV</label>
-                                <input type="text" id="card-cvv" placeholder="123" maxlength="4" inputmode="numeric" autocomplete="cc-csc">
+                                <div id="card-cvv" class="mp-secure-field"></div>
                             </div>
                         </div>
                         <div class="form-group">
@@ -1585,7 +1607,10 @@
         document.getElementById('card-payment-form').style.display = type === 'card' ? 'block' : 'none';
         const pixRow = document.getElementById('pay-pix-row');
         if (pixRow) pixRow.style.display = type === 'pix' ? 'flex' : 'none';
-        if (type === 'card') populateInstallments();
+        if (type === 'card') {
+            populateInstallments();
+            initCardFields().catch(e => console.error('Secure Fields:', e));
+        }
     }
 
     // ── INSTALLMENTS ──────────────────────────────────────
@@ -1603,21 +1628,6 @@
         }
     }
 
-    // ── CARD INPUT MASKS ──────────────────────────────────
-    document.getElementById('card-number')?.addEventListener('input', function() {
-        let v = this.value.replace(/\D/g, '').slice(0, 16);
-        v = v.replace(/(.{4})/g, '$1 ').trim();
-        this.value = v;
-    });
-    document.getElementById('card-expiry')?.addEventListener('input', function() {
-        let v = this.value.replace(/\D/g, '').slice(0, 4);
-        if (v.length > 2) v = v.slice(0, 2) + '/' + v.slice(2);
-        this.value = v;
-    });
-    document.getElementById('card-cvv')?.addEventListener('input', function() {
-        this.value = this.value.replace(/\D/g, '').slice(0, 4);
-    });
-
     // ── CARD PAYMENT (MercadoPago SDK) ───────────────────
     let _mpInstance = null;
     async function getMpInstance() {
@@ -1629,62 +1639,122 @@
         return _mpInstance;
     }
 
+    // Identificação do aparelho (security.js do Mercado Pago) — ajuda na aprovação
+    function getDeviceId() {
+        if (window.MP_DEVICE_SESSION_ID) return window.MP_DEVICE_SESSION_ID;
+        const muid = document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('muid='));
+        return muid ? (muid.split('=')[1] || null) : null;
+    }
+
+    // ── SECURE FIELDS (PCI) ───────────────────────────────
+    // Número, validade e CVV são iframes do Mercado Pago: os dados do cartão
+    // nunca passam pelo código desta página, só o token gerado pelo SDK.
+    let _cardFieldsPromise = null;
+    let _cardPaymentMethodId = null;
+    const _cardFieldErrors = { cardNumber: false, expirationDate: false, securityCode: false };
+
+    function initCardFields() {
+        if (_cardFieldsPromise) return _cardFieldsPromise;
+        _cardFieldsPromise = (async () => {
+            const mp = await getMpInstance();
+            const style = {
+                height: '100%',
+                padding: '0',
+                fontSize: '16px',
+                fontFamily: 'Inter, Helvetica, Arial, sans-serif',
+                color: '#1a1a1a',
+                placeholderColor: '#757575', // mesma cor do placeholder dos outros campos
+            };
+            const fields = {
+                cardNumber:     mp.fields.create('cardNumber', { placeholder: '0000 0000 0000 0000', style }).mount('card-number'),
+                expirationDate: mp.fields.create('expirationDate', { placeholder: 'MM/AA', mode: 'short', style }).mount('card-expiry'),
+                securityCode:   mp.fields.create('securityCode', { placeholder: '123', style }).mount('card-cvv'),
+            };
+            const boxId = { cardNumber: 'card-number', expirationDate: 'card-expiry', securityCode: 'card-cvv' };
+            Object.entries(fields).forEach(([name, field]) => {
+                const box = document.getElementById(boxId[name]);
+                field.on('focus', () => box.classList.add('focused'));
+                field.on('blur',  () => box.classList.remove('focused'));
+                field.on('validityChange', ({ errorMessages }) => {
+                    _cardFieldErrors[name] = !!(errorMessages && errorMessages.length);
+                    box.classList.toggle('error', _cardFieldErrors[name]);
+                });
+            });
+            // Bandeira pelo BIN: ajusta tamanho do número/CVV e guarda o payment_method_id
+            fields.cardNumber.on('binChange', async ({ bin }) => {
+                if (!bin) { _cardPaymentMethodId = null; return; }
+                try {
+                    const pm = (await mp.getPaymentMethods({ bin }))?.results?.[0];
+                    if (!pm) return;
+                    _cardPaymentMethodId = pm.id;
+                    const settings = pm.settings?.[0];
+                    if (settings?.card_number)   fields.cardNumber.update({ settings: settings.card_number });
+                    if (settings?.security_code) fields.securityCode.update({ settings: settings.security_code });
+                } catch (_) { /* a bandeira é buscada de novo pelo token no pagamento */ }
+            });
+            return fields;
+        })();
+        // Se falhar (ex.: sem internet), permite tentar de novo ao clicar em pagar
+        _cardFieldsPromise.catch(() => { _cardFieldsPromise = null; });
+        return _cardFieldsPromise;
+    }
+
     async function payWithCard() {
         if (!validateStep1() || !validateStep2()) {
             alert('Verifique os dados dos passos anteriores.');
             return;
         }
 
-        const number = document.getElementById('card-number').value.replace(/\s/g, '');
-        const expiry = document.getElementById('card-expiry').value;
-        const cvv    = document.getElementById('card-cvv').value;
         const holder = document.getElementById('card-holder').value.trim();
         const installments = document.getElementById('card-installments').value || '1';
-
-        if (number.length < 13) { alert('Número do cartão inválido.'); return; }
-        if (!/^\d{2}\/\d{2}$/.test(expiry)) { alert('Vencimento inválido. Use MM/AA.'); return; }
-        if (cvv.length < 3) { alert('CVV inválido.'); return; }
         if (!holder) { alert('Informe o nome do titular.'); return; }
-
-        const [expMonth, expYear2d] = expiry.split('/');
-        const expYear = expYear2d.length === 2 ? '20' + expYear2d : expYear2d;
+        if (Object.values(_cardFieldErrors).some(Boolean)) {
+            alert('Confira o número do cartão, o vencimento e o CVV.');
+            return;
+        }
         const cpfDigits = document.getElementById('cust-cpf').value.replace(/\D/g, '');
 
         document.getElementById('loading-overlay').classList.add('active');
         try {
             const mp = await getMpInstance();
+            await initCardFields();
 
-            // Detectar bandeira pelo BIN
-            const bin = number.slice(0, 6);
-            let cardPaymentMethodId = 'visa';
-            try {
-                const pmData = await mp.getPaymentMethods({ bin });
-                if (pmData?.results?.[0]?.id) cardPaymentMethodId = pmData.results[0].id;
-            } catch (_) { /* usa visa como fallback */ }
-
-            // Tokenizar cartão via SDK Mercado Pago
-            const cardFields = {
-                cardNumber:           number,
+            // Token gerado a partir dos Secure Fields (número/validade/CVV ficam no iframe do MP)
+            const tokenData = {
                 cardholderName:       holder.toUpperCase(),
-                cardExpirationMonth:  expMonth,
-                cardExpirationYear:   expYear,
-                securityCode:         cvv,
                 identificationType:   'CPF',
                 identificationNumber: cpfDigits,
             };
-            const tokenResult = await mp.createCardToken(cardFields);
+            let tokenResult;
+            try {
+                tokenResult = await mp.fields.createCardToken(tokenData);
+            } catch (tokenErr) {
+                console.error('Card token error:', tokenErr);
+                alert('Confira o número do cartão, o vencimento e o CVV.');
+                return;
+            }
+            if (!tokenResult?.id) {
+                alert('Confira o número do cartão, o vencimento e o CVV.');
+                return;
+            }
+
+            // Bandeira: vem do binChange; se a pessoa digitou rápido demais, busca pelo BIN do token
+            let cardPaymentMethodId = _cardPaymentMethodId;
+            if (!cardPaymentMethodId && tokenResult.first_six_digits) {
+                try {
+                    cardPaymentMethodId = (await mp.getPaymentMethods({ bin: tokenResult.first_six_digits }))?.results?.[0]?.id || null;
+                } catch (_) {}
+            }
+            if (!cardPaymentMethodId) {
+                alert('Não foi possível identificar a bandeira do cartão. Confira o número e tente novamente.');
+                return;
+            }
 
             // Segundo token, só para salvar o cartão (upsell 1-click da home).
             // Falhar aqui nunca atrapalha a compra.
             let saveCardToken = null;
             if (productType === 'solar') {
-                try { saveCardToken = (await mp.createCardToken(cardFields))?.id || null; } catch (_) {}
-            }
-
-            if (!tokenResult?.id) {
-                const cause = tokenResult?.cause?.[0]?.description || 'Dados do cartão inválidos.';
-                alert(cause);
-                return;
+                try { saveCardToken = (await mp.fields.createCardToken(tokenData))?.id || null; } catch (_) {}
             }
 
             const res = await fetch('/api/process-payment', {
@@ -1711,6 +1781,7 @@
                     saveCardToken:       saveCardToken,
                     cardPaymentMethodId: cardPaymentMethodId,
                     installments:        installments,
+                    deviceId:            getDeviceId(),
                     shippingMethod:      selectedShippingName,
                     shippingPrice:       selectedShippingPrice,
                     orderBumps:          selectedBumps,

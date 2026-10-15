@@ -11,6 +11,15 @@ const supabase = createClient(
 );
 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+
+// Nome e foto de cada produto como aparecem no Mercado Pago (detalhe do pagamento)
+const PRODUCT_INFO = {
+  solar:         { name: 'Luminária Solar de Parede',         picture: 'treslumi.jpg' },
+  led:           { name: 'Kit Luminária LED Sem Fio',         picture: null },
+  'lampada-led': { name: 'Lâmpada LED Solar Max',             picture: 'https://userelux.com.br/cdn/shop/files/Disenosintitulo_15_1024x.png?v=1773090670' },
+  jardim:        { name: 'Luminária Solar Externa de Jardim', picture: 'jardim-principal.jpg' },
+};
+const ADDON_LABELS = { luminaria: 'luminárias extras', refletores: '2 refletores solares', envio: 'envio priorizado', garantia: 'garantia estendida' };
 const MP_BASE = 'https://api.mercadopago.com';
 
 export default async function handler(req, res) {
@@ -82,18 +91,26 @@ export default async function handler(req, res) {
     const lastName   = nameParts.slice(1).join(' ') || firstName;
     const internalOrderId = randomUUID();
 
+    const product = PRODUCT_INFO[productType] || PRODUCT_INFO.solar;
+    const addons = Object.keys(ADDON_LABELS).filter(k => orderBumps?.[k] === true).map(k => ADDON_LABELS[k]);
+    const itemTitle = `${product.name} — Kit ${parsedQty} unidades${addons.length ? ' + ' + addons.join(' + ') : ''}`;
+    const pictureUrl = product.picture
+      ? (product.picture.startsWith('http') ? product.picture : `${process.env.SITE_URL}/${product.picture}`)
+      : undefined;
+
     // ── Montar pagamento Mercado Pago ──────────────────────
     const paymentBody = {
       transaction_amount: parsedTotal,
-      description: `${productName || 'Luminária Solar Solare'} — Kit ${quantity} unidades`,
+      description: `JR Varejista — ${itemTitle}`,
       notification_url: `${process.env.SITE_URL}/api/mp-webhook`,
       external_reference: internalOrderId,
-      statement_descriptor: 'Solare Luminarias',
+      statement_descriptor: 'JR VAREJISTA', // nome na fatura do cartão
       additional_info: {
         items: [{
-          id: 'solare-luminaria',
-          title: `Luminária Solar LED Solare — Kit ${parsedQty} unidades`,
-          description: 'Luminária solar LED recarregável, resistente à água, sem fio. Acende automaticamente à noite.',
+          id: `jr-${productType || 'solar'}`,
+          title: itemTitle,
+          description: 'Iluminação solar LED recarregável, resistente à água, sem fio. Acende automaticamente à noite.',
+          ...(pictureUrl && { picture_url: pictureUrl }),
           category_id: 'home',
           quantity: 1,
           unit_price: parsedTotal,
@@ -147,7 +164,7 @@ export default async function handler(req, res) {
     const mpHeaders = {
       'Authorization':    `Bearer ${MP_ACCESS_TOKEN}`,
       'Content-Type':     'application/json',
-      'X-Idempotency-Key': `solare-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      'X-Idempotency-Key': `jrvarejo-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     };
     if (deviceId && typeof deviceId === 'string' && deviceId.length > 0) {
       mpHeaders['X-Meli-Session-Id'] = deviceId;

@@ -86,7 +86,7 @@ export default async function handler(req, res) {
     if (order.payment_method === 'pix') {
       const paymentData = {
         transaction_amount: upsellAmount,
-        description: `${offerLabel} — Kit 2 Luminárias Solar Solare`,
+        description: `JR Varejista — ${offerLabel} — Kit 2 Luminárias Solares`,
         payment_method_id: 'pix',
         date_of_expiration: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
         payer: buildPayer(order),
@@ -169,7 +169,8 @@ export default async function handler(req, res) {
 
     const paymentData = {
       transaction_amount: upsellAmount,
-      description: `${offerLabel} — Kit 2 Luminárias Solar Solare`,
+      description: `JR Varejista — ${offerLabel} — Kit 2 Luminárias Solares`,
+      statement_descriptor: 'JR VAREJISTA', // nome na fatura do cartão
       payment_method_id: savedCard.payment_method?.id || order.payment_method,
       installments: 1,
       token: cardTokenData.id,
