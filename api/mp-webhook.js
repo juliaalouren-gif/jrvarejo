@@ -77,7 +77,8 @@ export default async function handler(req, res) {
 
     if (!mpResponse.ok) {
       console.error('[Webhook] MP API error fetching payment', { paymentId, status: mpResponse.status });
-      return res.status(200).json({ status: 'mp_api_error' });
+      // 404 = pagamento inexistente (não adianta reenviar); outros erros: pede reenvio ao Mercado Pago
+      return res.status(mpResponse.status === 404 ? 200 : 500).json({ status: 'mp_api_error' });
     }
 
     const payment = await mpResponse.json();
@@ -108,32 +109,39 @@ export default async function handler(req, res) {
       return res.status(200).json({ updated: false, reason: 'already_approved' });
     }
 
-    const { error: updateError } = await supabase
+    // Atualização condicional: só muda se o status for diferente (e nunca rebaixa um pedido pago).
+    // O Mercado Pago avisa o mesmo pagamento várias vezes; só quem efetivamente muda o status
+    // dispara e-mail/WhatsApp — sem avisos duplicados, mesmo com avisos simultâneos.
+    let updateQ = supabase
       .from('orders')
       .update({ status: newStatus })
-      .eq('mp_payment_id', String(paymentId));
+      .eq('mp_payment_id', String(paymentId))
+      .neq('status', newStatus);
+    if (newStatus !== 'approved') updateQ = updateQ.neq('status', 'approved');
+    const { data: changedRows, error: updateError } = await updateQ.select('id');
 
     if (updateError) {
       console.error('[Webhook] DB update error:', updateError);
-      return res.status(200).json({ status: 'db_error' });
+      return res.status(500).json({ status: 'db_error' }); // Mercado Pago reenvia o aviso
     }
+    const changed = (changedRows || []).length > 0;
 
     // Mark lead as converted so abandonment message is not sent
-    if (order?.customer_phone) {
-      supabase.from('leads')
+    if (changed && newStatus === 'approved' && order?.customer_phone) {
+      await supabase.from('leads')
         .update({ converted: true })
-        .eq('phone', String(order.customer_phone).replace(/\D/g, ''));
+        .eq('phone', String(order.customer_phone).replace(/\D/g, ''))
+        .then(({ error }) => { if (error) console.error('[Webhook] lead update error:', error); });
     }
 
-    // Send notifications based on status
-    if (order) {
+    // Send notifications based on status — only when this webhook changed it
+    if (order && changed) {
       // Venda adicional (upsell/downsell): o cliente já recebeu o WhatsApp e os
       // e-mails de pós-compra do pedido principal, então não repete.
       const isUpsellOrder = order.customer_address?.upsell === true;
       if (newStatus === 'approved') {
         const firstName = (order.customer_name || '').trim().split(' ')[0];
-        // For card payments already approved synchronously, avoid double WhatsApp
-        if (previousStatus !== 'approved' && !isUpsellOrder) await sendWhatsApp(order.customer_phone,
+        if (!isUpsellOrder) await sendWhatsApp(order.customer_phone,
           `Olá ${firstName}, seu pedido foi confirmado e logo sairá para entrega, lembrando que nosso prazo de entrega é de 8 dias`
         ).catch(() => {});
 
@@ -144,7 +152,7 @@ export default async function handler(req, res) {
           totalPrice: order.total_price,
           shippingMethod: order.shipping_method,
           orderId: order.id,
-        });
+        }).catch(e => console.error('notifyPaymentApproved (webhook) failed:', e));
 
         if (!isUpsellOrder) schedulePostPurchaseEmails({
           customerName:  order.customer_name,
@@ -181,11 +189,11 @@ export default async function handler(req, res) {
         await notifyPixExpired({
           customerName: order.customer_name,
           customerEmail: order.customer_email,
-        });
+        }).catch(e => console.error('notifyPixExpired failed:', e));
       }
     }
 
-    return res.status(200).json({ updated: true });
+    return res.status(200).json({ updated: changed });
 
   } catch (err) {
     console.error('[Webhook] Unhandled error:', err);

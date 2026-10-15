@@ -20,7 +20,7 @@
     <title>Finalizar Compra — JR Varejista</title>
     <script src="https://sdk.mercadopago.com/js/v2"></script>
     <!-- Antifraude do Mercado Pago: identifica o aparelho (MP_DEVICE_SESSION_ID) e ajuda a aprovar cartões -->
-    <script src="https://www.mercadopago.com/v2/security.js" view="checkout"></script>
+    <script src="https://www.mercadopago.com/v2/security.js" view="checkout" async></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -1452,6 +1452,7 @@
         const target = document.querySelector(`.shipping-option[data-shipping-key="${type}"]`);
         if (target) target.classList.add('selected');
         updateTotalDisplay();
+        if (paymentType === 'card') populateInstallments();
     }
 
     // ── VALIDATION HELPERS ────────────────────────────────
@@ -1632,19 +1633,50 @@
     }
 
     // ── INSTALLMENTS ──────────────────────────────────────
-    function populateInstallments() {
+    // As parcelas vêm do próprio Mercado Pago para o cartão digitado (BIN): assim o
+    // cliente vê os juros reais da conta e só escolhe parcelas que o cartão aceita.
+    let _cardBin = null;
+    let _installmentsReq = 0;
+    async function populateInstallments() {
         const sel = document.getElementById('card-installments');
         if (!sel) return;
-        sel.innerHTML = '';
-        const total = price + selectedShippingPrice + getBumpTotal();
-        for (let i = 1; i <= 12; i++) {
-            const val = (total / i).toFixed(2).replace('.', ',');
-            const opt = document.createElement('option');
-            opt.value = i;
-            opt.textContent = `${i}x de R$ ${val} (sem juros)`;
-            sel.appendChild(opt);
+        const total = Math.round((price + selectedShippingPrice + getBumpTotal()) * 100) / 100;
+        const reqId = ++_installmentsReq;
+        const setOptions = (opts) => {
+            if (reqId !== _installmentsReq) return; // resposta antiga (total/cartão mudou)
+            sel.innerHTML = '';
+            opts.forEach(([value, text]) => {
+                const opt = document.createElement('option');
+                opt.value = value; opt.textContent = text; sel.appendChild(opt);
+            });
+        };
+        if (!_cardBin) {
+            setOptions([[1, `1x de ${fmt(total)} — digite o cartão para ver o parcelamento`]]);
+            return;
+        }
+        try {
+            const mp = await getMpInstance();
+            const data = await mp.getInstallments({ amount: total.toFixed(2), bin: _cardBin, paymentTypeId: 'credit_card' });
+            const costs = data?.[0]?.payer_costs || [];
+            if (!costs.length) throw new Error('sem parcelas');
+            setOptions(costs.map(c => [c.installments,
+                c.installment_rate === 0
+                    ? `${c.installments}x de ${fmt(c.installment_amount)} sem juros`
+                    : `${c.installments}x de ${fmt(c.installment_amount)} (total ${fmt(c.total_amount)})`]));
+        } catch (e) {
+            console.error('Parcelas:', e);
+            setOptions([[1, `1x de ${fmt(total)}`]]);
         }
     }
+
+    // Identificador da tentativa de pagamento: se a resposta se perder (internet caiu)
+    // e a pessoa clicar de novo, o servidor reconhece a tentativa e não cobra duas vezes.
+    function newAttemptKey() {
+        return (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+            : 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+    }
+    let _payAttemptKey = newAttemptKey();
+    let _paying = false;
 
     // ── CARD PAYMENT (MercadoPago SDK) ───────────────────
     let _mpInstance = null;
@@ -1700,7 +1732,9 @@
             });
             // Bandeira pelo BIN: ajusta tamanho do número/CVV e guarda o payment_method_id
             fields.cardNumber.on('binChange', async ({ bin }) => {
-                if (!bin) { _cardPaymentMethodId = null; return; }
+                if (!bin) { _cardPaymentMethodId = null; _cardBin = null; populateInstallments(); return; }
+                _cardBin = bin;
+                populateInstallments();
                 try {
                     const pm = (await mp.getPaymentMethods({ bin }))?.results?.[0];
                     if (!pm) return;
@@ -1723,8 +1757,8 @@
             return;
         }
 
+        if (_paying) return; // evita cobrança dupla por clique repetido
         const holder = document.getElementById('card-holder').value.trim();
-        const installments = document.getElementById('card-installments').value || '1';
         if (!holder) { alert('Informe o nome do titular.'); return; }
         if (Object.values(_cardFieldErrors).some(Boolean)) {
             alert('Confira o número do cartão, o vencimento e o CVV.');
@@ -1732,6 +1766,8 @@
         }
         const cpfDigits = document.getElementById('cust-cpf').value.replace(/\D/g, '');
 
+        _paying = true;
+        let redirecting = false;
         document.getElementById('loading-overlay').classList.add('active');
         try {
             const mp = await getMpInstance();
@@ -1767,6 +1803,12 @@
                 alert('Não foi possível identificar a bandeira do cartão. Confira o número e tente novamente.');
                 return;
             }
+            // Parcelas: se ainda não vieram do Mercado Pago (digitou rápido), carrega agora para este cartão
+            if (!_cardBin && tokenResult.first_six_digits) {
+                _cardBin = tokenResult.first_six_digits;
+                await populateInstallments();
+            }
+            const installments = document.getElementById('card-installments').value || '1';
 
             // Segundo token, só para salvar o cartão (upsell 1-click da home).
             // Falhar aqui nunca atrapalha a compra.
@@ -1800,6 +1842,7 @@
                     cardPaymentMethodId: cardPaymentMethodId,
                     installments:        installments,
                     deviceId:            getDeviceId(),
+                    attemptKey:          _payAttemptKey,
                     shippingMethod:      selectedShippingName,
                     shippingPrice:       selectedShippingPrice,
                     orderBumps:          selectedBumps,
@@ -1810,13 +1853,19 @@
             });
 
             const result = await res.json();
+            _payAttemptKey = newAttemptKey(); // o servidor respondeu: a próxima tentativa é nova
             const total  = price + selectedShippingPrice + getBumpTotal();
 
             if (!res.ok) {
                 const reason = result.error || 'Erro desconhecido';
                 console.error('Card payment error:', result);
                 alert(`Pagamento recusado.\nMotivo: ${reason}\n\nVerifique os dados ou tente com outro cartão.`);
+            } else if (result.status === 'pending') {
+                // Em análise antifraude: NÃO é recusa — pedir de novo pode gerar cobrança dupla
+                redirecting = true;
+                window.location.href = `/obrigado.html?status=pending&type=card&id=${encodeURIComponent(result.id)}&total=${total}&orderId=${encodeURIComponent(result.orderId || '')}`;
             } else if (result.status === 'approved') {
+                redirecting = true;
                 if (typeof fbq !== 'undefined') {
                     fbq('track','Purchase',{value:total,currency:'BRL',num_items:1,content_ids:['solare-luminaria'],content_type:'product'});
                     fbq('trackCustom','PurchaseNewClient',{value:total,currency:'BRL'});
@@ -1838,7 +1887,7 @@
                 });
                 setTimeout(function() { window.location.href = dest; }, 1500);
             } else {
-                const reason = result.error || 'Verifique os dados ou o limite do cartão.';
+                const reason = result.message || 'Verifique os dados ou o limite do cartão.';
                 console.error('Card payment declined:', result);
                 alert(`Pagamento recusado: ${reason}`);
             }
@@ -1846,13 +1895,19 @@
             console.error('Card payment error:', e);
             alert('Erro ao processar pagamento. Verifique sua internet e tente novamente.');
         } finally {
-            document.getElementById('loading-overlay').classList.remove('active');
+            if (!redirecting) {
+                _paying = false;
+                document.getElementById('loading-overlay').classList.remove('active');
+            }
         }
     }
 
     // ── PIX PAYMENT ───────────────────────────────────────
     async function payWithPix() {
         if (!validateStep1() || !validateStep2()) return;
+        if (_paying) return; // evita gerar dois Pix por clique repetido
+        _paying = true;
+        let redirecting = false;
         document.getElementById('loading-overlay').classList.add('active');
         try {
             // Initialise MP SDK so the device fingerprint is captured even for Pix
@@ -1896,10 +1951,13 @@
                     cartAddons: getCartAddons(),
                     productName: productName,
                     productType: productType,
+                    attemptKey: _payAttemptKey,
                 })
             });
             const result = await res.json();
+            _payAttemptKey = newAttemptKey();
             if (res.ok && result.qr_code) {
+                redirecting = true;
                 const pixTotal = getPixTotal();
                 const reminderParam    = result.pix_reminder_id    ? `&reminder_id=${encodeURIComponent(result.pix_reminder_id)}`       : '';
                 const reminder2hParam  = result.pix_reminder_2h_id ? `&reminder_2h_id=${encodeURIComponent(result.pix_reminder_2h_id)}` : '';
@@ -1914,7 +1972,10 @@
             console.error('Pix fetch error:', e);
             alert('Erro de conexão. Verifique sua internet e tente novamente.');
         } finally {
-            document.getElementById('loading-overlay').classList.remove('active');
+            if (!redirecting) {
+                _paying = false;
+                document.getElementById('loading-overlay').classList.remove('active');
+            }
         }
     }
 

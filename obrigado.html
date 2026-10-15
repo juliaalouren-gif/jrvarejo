@@ -125,7 +125,7 @@
         <!-- Countdown Timer -->
         <div class="urgency-banner" id="urgency-banner">
             <span class="urgency-label">⚠️ Pague agora — código expirando</span>
-            <div class="countdown-display" id="countdown-display">10:00</div>
+            <div class="countdown-display" id="countdown-display">30:00</div>
             <span class="urgency-msg" id="urgency-msg">Finalize seu pagamento antes que o código Pix expire!</span>
         </div>
 
@@ -213,8 +213,15 @@
             startPixPolling(paymentId);
         }
 
-        // Iniciar cronômetro de 10 minutos
+        // Cronômetro igual à validade real do Pix (30 min, definida em api/process-payment.js)
         startCountdown();
+    } else if (type === 'card' && status === 'pending') {
+        // Cartão em análise antifraude: NÃO é recusa. Acompanha até sair o resultado.
+        document.getElementById('status-icon').className = 'icon pending';
+        document.getElementById('status-icon').innerHTML = '<i class="fas fa-hourglass-half"></i>';
+        document.getElementById('status-title').innerText = 'Pagamento em análise';
+        document.getElementById('status-desc').innerText = 'O Mercado Pago está analisando seu pagamento — normalmente leva poucos minutos. Não é preciso pagar de novo: você recebe a confirmação por e-mail.';
+        if (paymentId) startCardReviewPolling(paymentId);
     } else if (status === 'rejected') {
         document.getElementById('status-icon').className = 'icon failure';
         document.getElementById('status-icon').innerHTML = '<i class="fas fa-times-circle"></i>';
@@ -223,7 +230,7 @@
     }
 
     function startCountdown() {
-        let seconds = 600; // 10 minutes
+        let seconds = 30 * 60; // mesma validade do Pix no Mercado Pago
         const display = document.getElementById('countdown-display');
         const banner = document.getElementById('urgency-banner');
         const msg = document.getElementById('urgency-msg');
@@ -251,8 +258,36 @@
         }, 1000);
     }
 
-    async function startPixPolling(id) {
+    // Cartão em análise: consulta a cada 10 s por até 15 min
+    function startCardReviewPolling(id) {
+        const startedAt = Date.now();
         const interval = setInterval(async () => {
+            if (Date.now() - startedAt > 15 * 60 * 1000) { clearInterval(interval); return; }
+            try {
+                const res = await fetch(`/api/check-payment-status?payment_id=${encodeURIComponent(id)}`);
+                const data = await res.json();
+                if (data.status === 'approved') {
+                    clearInterval(interval);
+                    document.getElementById('status-icon').className = 'icon success';
+                    document.getElementById('status-icon').innerHTML = '<i class="fas fa-check-circle"></i>';
+                    document.getElementById('status-title').innerText = 'Pagamento Aprovado!';
+                    document.getElementById('status-desc').innerText = 'Obrigado pela sua compra. Seu pedido será enviado em breve.';
+                } else if (data.status === 'rejected' || data.status === 'cancelled') {
+                    clearInterval(interval);
+                    document.getElementById('status-icon').className = 'icon failure';
+                    document.getElementById('status-icon').innerHTML = '<i class="fas fa-times-circle"></i>';
+                    document.getElementById('status-title').innerText = 'Pagamento não aprovado';
+                    document.getElementById('status-desc').innerText = 'A análise do Mercado Pago não aprovou o pagamento e nada foi cobrado. Você pode tentar outro cartão ou pagar com Pix.';
+                }
+            } catch (e) { console.error('Erro polling cartão:', e); }
+        }, 10000);
+    }
+
+    async function startPixPolling(id) {
+        const startedAt = Date.now();
+        const interval = setInterval(async () => {
+            // Pix vale 30 min: depois de 35 min para de consultar
+            if (Date.now() - startedAt > 35 * 60 * 1000) { clearInterval(interval); return; }
             try {
                 const reminderParam   = reminderId   ? `&reminder_id=${encodeURIComponent(reminderId)}`       : '';
                 const reminder2hParam = reminder2hId ? `&reminder_2h_id=${encodeURIComponent(reminder2hId)}` : '';

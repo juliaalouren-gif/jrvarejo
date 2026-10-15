@@ -85,13 +85,17 @@ export default async function handler(req, res) {
             .eq('id', order.id)
             .single();
 
-          const { error: upErr } = await supabase
+          // Atualiza só se ainda está pendente (o webhook pode ter mudado nesse meio tempo)
+          const { data: changedRows, error: upErr } = await supabase
             .from('orders')
             .update({ status: newStatus })
-            .eq('id', order.id);
+            .eq('id', order.id)
+            .eq('status', 'pending')
+            .select('id');
+          const changed = (changedRows || []).length > 0;
 
           // Envia email de confirmação para pedidos aprovados
-          if (newStatus === 'approved' && fullOrder) {
+          if (changed && newStatus === 'approved' && fullOrder) {
             notifyPaymentApproved({
               customerName:   fullOrder.customer_name,
               customerEmail:  fullOrder.customer_email,

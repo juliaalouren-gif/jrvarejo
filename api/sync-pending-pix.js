@@ -58,11 +58,14 @@ export default async function handler(req, res) {
         const mpData = await mpRes.json();
 
         if (mpData.status === 'approved') {
-          // Atualiza Supabase
-          await supabase
+          // Atualiza só se ainda está pendente (o webhook pode ter aprovado nesse meio tempo)
+          const { data: changedRows } = await supabase
             .from('orders')
             .update({ status: 'approved' })
-            .eq('id', order.id);
+            .eq('id', order.id)
+            .eq('status', 'pending')
+            .select('id');
+          if (!(changedRows || []).length) continue;
 
           // Envia email de confirmação
           await notifyPaymentApproved({

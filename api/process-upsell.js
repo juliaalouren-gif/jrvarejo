@@ -37,12 +37,42 @@ function buildUpsellOrder(order, orderId, offer, amount, mpResult, extra = {}) {
     product_light_color: order.product_light_color,
     total_price: amount,
     payment_method: order.payment_method,
-    mp_payment_id: String(mpResult.id),
-    status: mpResult.status === 'approved' ? 'approved' : 'pending',
+    mp_payment_id: mpResult.id != null ? String(mpResult.id) : null,
+    status: mpResult.status === 'approved' ? 'approved' : mpResult.status === 'rejected' ? 'rejected' : 'pending',
     shipping_method: order.shipping_method,
     shipping_price: 0,
     ...extra,
   };
+}
+
+// Reserva a venda adicional ANTES de cobrar. O índice único orders_one_active_upsell
+// (supabase-schema.sql) só permite uma venda adicional ativa (pendente/paga) por pedido:
+// se dois cliques chegarem juntos, o segundo encontra a vaga ocupada e não cobra.
+async function reserveUpsell(order, orderId, offerName, amount) {
+  const { data, error } = await supabase
+    .from('orders')
+    .insert(buildUpsellOrder(order, orderId, offerName, amount, { id: null, status: 'pending' }))
+    .select()
+    .single();
+  if (error?.code === '23505') return { busy: true };
+  if (error) console.error('Supabase Error (reserva upsell):', error);
+  return { row: data || null };
+}
+
+// Grava o resultado da cobrança na reserva (ou cria a linha, se a reserva não foi gravada)
+async function finishUpsell(reservation, fields, order, orderId, offerName, amount, mpResult) {
+  if (reservation.row) {
+    const { data, error } = await supabase.from('orders').update(fields).eq('id', reservation.row.id).select().single();
+    if (error) console.error('Supabase Error (finaliza upsell):', error);
+    return data || reservation.row;
+  }
+  const { data, error } = await supabase
+    .from('orders')
+    .insert({ ...buildUpsellOrder(order, orderId, offerName, amount, mpResult), ...fields })
+    .select()
+    .single();
+  if (error) console.error('Supabase Error (upsell):', error);
+  return data;
 }
 
 export default async function handler(req, res) {
@@ -77,6 +107,40 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Upsell not allowed for this order' });
     }
 
+    // Trava contra cobrança dupla (clique repetido, botão "voltar", recarregar a página):
+    // se já existe venda adicional deste pedido paga ou em andamento, não cobra de novo.
+    const { data: existing } = await supabase
+      .from('orders')
+      .select('id, status, created_at, mp_payment_id, pix_qr_code, pix_qr_code_base64')
+      .eq('customer_address->>upsell_of', orderId)
+      .in('status', ['approved', 'pending'])
+      .order('created_at', { ascending: false })
+      .limit(1);
+    let prev = existing?.[0];
+    // Reserva sem pagamento há mais de 2 min (a função caiu no meio): libera e segue
+    if (prev?.status === 'pending' && !prev.mp_payment_id && Date.now() - new Date(prev.created_at).getTime() > 2 * 60 * 1000) {
+      await supabase.from('orders').update({ status: 'rejected' }).eq('id', prev.id);
+      prev = null;
+    }
+    // Outra requisição deste mesmo upsell está cobrando agora
+    if (prev?.status === 'pending' && !prev.mp_payment_id) {
+      return res.status(409).json({ error: 'Upsell em processamento', processing: true });
+    }
+    if (prev?.status === 'approved') {
+      return res.status(200).json({ success: true, status: 'approved', already: true });
+    }
+    // Pix da oferta ainda válido (expira em 15 min): devolve o mesmo QR em vez de gerar outro
+    if (prev?.status === 'pending' && prev.pix_qr_code && Date.now() - new Date(prev.created_at).getTime() < 14 * 60 * 1000) {
+      return res.status(200).json({
+        success: true, status: 'pending', id: prev.mp_payment_id,
+        qr_code: prev.pix_qr_code, qr_code_base64: prev.pix_qr_code_base64, already: true,
+      });
+    }
+    // Cartão em análise no Mercado Pago: aguarda o resultado em vez de cobrar de novo
+    if (prev?.status === 'pending' && !prev.pix_qr_code) {
+      return res.status(200).json({ success: true, status: 'pending', already: true });
+    }
+
     const mpAuthHeaders = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${process.env.MP_ACCESS_TOKEN}`,
@@ -94,6 +158,9 @@ export default async function handler(req, res) {
         external_reference: `upsell-${orderId}-${Date.now()}`,
       };
 
+      const reservation = await reserveUpsell(order, orderId, offerName, upsellAmount);
+      if (reservation.busy) return res.status(409).json({ error: 'Upsell em processamento', processing: true });
+
       const pixResponse = await fetch(`${MP_BASE}/v1/payments`, {
         method: 'POST',
         headers: {
@@ -106,6 +173,7 @@ export default async function handler(req, res) {
 
       if (!pixResponse.ok) {
         console.error('MP Upsell Pix Error:', pixResult);
+        if (reservation.row) await supabase.from('orders').update({ status: 'rejected' }).eq('id', reservation.row.id);
         return res.status(400).json({ error: 'Upsell payment failed', details: pixResult });
       }
 
@@ -113,13 +181,12 @@ export default async function handler(req, res) {
       const qrCode = txData?.qr_code ?? null;
       const qrCodeBase64 = txData?.qr_code_base64 ?? null;
 
-      const { error: insertError } = await supabase
-        .from('orders')
-        .insert(buildUpsellOrder(order, orderId, offerName, upsellAmount, pixResult, {
-          pix_qr_code: qrCode,
-          pix_qr_code_base64: qrCodeBase64,
-        }));
-      if (insertError) console.error('Supabase Error (upsell pix):', insertError);
+      await finishUpsell(reservation, {
+        mp_payment_id: String(pixResult.id),
+        status: 'pending',
+        pix_qr_code: qrCode,
+        pix_qr_code_base64: qrCodeBase64,
+      }, order, orderId, offerName, upsellAmount, pixResult);
 
       return res.status(200).json({
         success: true,
@@ -179,6 +246,9 @@ export default async function handler(req, res) {
       external_reference: `upsell-${orderId}-${Date.now()}`,
     };
 
+    const reservation = await reserveUpsell(order, orderId, offerName, upsellAmount);
+    if (reservation.busy) return res.status(409).json({ error: 'Upsell em processamento', processing: true });
+
     const mpResponse = await fetch(`${MP_BASE}/v1/payments`, {
       method: 'POST',
       headers: {
@@ -192,14 +262,19 @@ export default async function handler(req, res) {
 
     if (!mpResponse.ok || mpResult.status === 'rejected') {
       console.error('MP Upsell Error:', mpResult);
+      // Libera a vaga: a pessoa pode tentar de novo (ex.: o downsell)
+      if (reservation.row) {
+        await supabase.from('orders')
+          .update({ status: 'rejected', mp_payment_id: mpResult?.id != null ? String(mpResult.id) : null })
+          .eq('id', reservation.row.id);
+      }
       return res.status(400).json({ error: 'Upsell payment failed', details: mpResult });
     }
 
-    const { data: savedUpsell } = await supabase
-      .from('orders')
-      .insert(buildUpsellOrder(order, orderId, offerName, upsellAmount, mpResult))
-      .select()
-      .single();
+    const savedUpsell = await finishUpsell(reservation, {
+      mp_payment_id: String(mpResult.id),
+      status: mpResult.status === 'approved' ? 'approved' : 'pending',
+    }, order, orderId, offerName, upsellAmount, mpResult);
 
     // Send notification for upsell approval
     if (mpResult.status === 'approved') {
@@ -210,7 +285,7 @@ export default async function handler(req, res) {
         totalPrice: upsellAmount,
         shippingMethod: order.shipping_method,
         orderId: savedUpsell?.id || `MP-${mpResult.id}`,
-      });
+      }).catch(e => console.error('Upsell notify failed (non-fatal):', e));
     }
 
     return res.status(200).json({

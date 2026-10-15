@@ -19,6 +19,24 @@ const PRODUCT_INFO = {
   'lampada-led': { name: 'Lâmpada LED Solar Max',             picture: 'https://userelux.com.br/cdn/shop/files/Disenosintitulo_15_1024x.png?v=1773090670' },
   jardim:        { name: 'Luminária Solar Externa de Jardim', picture: 'jardim-principal.jpg' },
 };
+// Motivo da recusa do cartão em português (status_detail do Mercado Pago)
+const REJECTION_MESSAGES = {
+  cc_rejected_bad_filled_card_number:   'Número do cartão incorreto. Confira e tente novamente.',
+  cc_rejected_bad_filled_date:          'Data de vencimento incorreta. Confira e tente novamente.',
+  cc_rejected_bad_filled_security_code: 'Código de segurança (CVV) incorreto. Confira e tente novamente.',
+  cc_rejected_bad_filled_other:         'Algum dado do cartão está incorreto. Confira e tente novamente.',
+  cc_rejected_insufficient_amount:      'Limite insuficiente no cartão. Tente outro cartão ou pague com Pix.',
+  cc_rejected_call_for_authorize:       'O banco pediu autorização para esta compra. Ligue para o banco do cartão e tente de novo, ou pague com Pix.',
+  cc_rejected_card_disabled:            'Cartão bloqueado ou inativo. Ligue para o banco ou use outro cartão.',
+  cc_rejected_duplicated_payment:       'Pagamento já realizado com este valor. Confira seu e-mail antes de tentar de novo.',
+  cc_rejected_high_risk:                'Pagamento recusado por segurança. Tente outro cartão ou pague com Pix.',
+  cc_rejected_blacklist:                'Pagamento recusado por segurança. Tente outro cartão ou pague com Pix.',
+  cc_rejected_max_attempts:             'Limite de tentativas atingido. Use outro cartão ou pague com Pix.',
+  cc_rejected_invalid_installments:     'Este cartão não aceita esse número de parcelas. Escolha outra opção.',
+  cc_rejected_card_error:               'O cartão não pôde ser processado. Tente outro cartão ou pague com Pix.',
+  cc_rejected_other_reason:             'O banco recusou o pagamento. Tente outro cartão ou pague com Pix.',
+};
+
 const ADDON_LABELS = { luminaria: 'luminárias extras', refletores: '2 refletores solares', envio: 'envio priorizado', garantia: 'garantia estendida' };
 const MP_BASE = 'https://api.mercadopago.com';
 
@@ -45,6 +63,7 @@ export default async function handler(req, res) {
       shippingPrice,
       orderBumps,
       cartAddons,
+      attemptKey,
       deviceId,
       productName,
       productType,
@@ -87,6 +106,26 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Método de pagamento inválido.' });
 
     const isPix = paymentMethodId === 'pix';
+
+    // Mesma tentativa reenviada (ex.: a resposta se perdeu e a pessoa clicou de novo):
+    // devolve o pagamento que já existe em vez de cobrar outra vez.
+    const attempt = /^[\w-]{8,64}$/.test(String(attemptKey || '')) ? String(attemptKey) : null;
+    if (attempt) {
+      const { data: previous } = await supabase
+        .from('orders')
+        .select('id, status, mp_payment_id, pix_qr_code, pix_qr_code_base64')
+        .eq('customer_address->>attempt', attempt)
+        .in('status', ['approved', 'pending'])
+        .limit(1);
+      if (previous && previous.length) {
+        const prev = previous[0];
+        console.warn('[Pagamento] Tentativa repetida — devolvendo pagamento existente', { attempt, orderId: prev.id });
+        return res.status(200).json({
+          success: true, status: prev.status, id: prev.mp_payment_id, orderId: prev.id,
+          qr_code: isPix ? prev.pix_qr_code : null, qr_code_base64: isPix ? prev.pix_qr_code_base64 : null,
+        });
+      }
+    }
     const nameParts = customerName.trim().split(/\s+/);
     const firstName  = nameParts[0];
     const lastName   = nameParts.slice(1).join(' ') || firstName;
@@ -196,6 +235,11 @@ export default async function handler(req, res) {
     const paymentStatus = statusMap[mpResult.status] || 'pending';
 
     // ── Salvar no Supabase ────────────────────────────────
+    // Composição da compra para o dashboard — nunca pode impedir a resposta de quem já pagou
+    function safeBreakdown() {
+      try { return orderBreakdown({ ...pricedOrder, cartAddons }, parsedTotal); }
+      catch (e) { console.error('orderBreakdown failed (non-fatal):', e); return null; }
+    }
     const orderData = {
       id:                  internalOrderId,
       customer_name:       customerName,
@@ -203,7 +247,7 @@ export default async function handler(req, res) {
       customer_cpf:        customerCpf,
       customer_phone:      customerPhone,
       // purchase: composição da compra (kit, carrinho, order bump, frete, desconto) para o dashboard
-      customer_address:    { ...customerAddress, orderBumps: orderBumps || {}, purchase: orderBreakdown({ ...pricedOrder, cartAddons }, parsedTotal) },
+      customer_address:    { ...customerAddress, orderBumps: orderBumps || {}, purchase: safeBreakdown(), attempt },
       product_quantity:    quantity,
       product_light_color: lightColor,
       total_price:         totalPrice,
@@ -220,13 +264,13 @@ export default async function handler(req, res) {
       orderData.pix_qr_code_base64 = txData?.qr_code_base64 ?? null;
     }
 
-    const { data: order, error: dbError } = await supabase
-      .from('orders')
-      .insert(orderData)
-      .select()
-      .single();
-
-    if (dbError) console.error('Supabase Error:', dbError);
+    // O pagamento já existe no Mercado Pago: tenta salvar o pedido de novo se a primeira gravação falhar
+    let { data: order, error: dbError } = await supabase.from('orders').insert(orderData).select().single();
+    if (dbError) {
+      console.error('Supabase Error (1ª tentativa):', dbError);
+      ({ data: order, error: dbError } = await supabase.from('orders').insert(orderData).select().single());
+      if (dbError) console.error('Supabase Error — PEDIDO NÃO SALVO, mp_payment_id', mpResult.id, dbError);
+    }
 
     // ── Salvar cartão no Mercado Pago (habilita o upsell 1-click) ──
     // Só depois da venda aprovada e com um token separado: nada aqui pode
@@ -300,9 +344,10 @@ export default async function handler(req, res) {
 
     // Mark lead converted immediately on card approval so abandonment cron never fires
     if (!isPix && paymentStatus === 'approved' && customerPhone) {
-      supabase.from('leads')
+      await supabase.from('leads')
         .update({ converted: true })
-        .eq('phone', String(customerPhone).replace(/\D/g, ''));
+        .eq('phone', String(customerPhone).replace(/\D/g, ''))
+        .then(({ error }) => { if (error) console.error('lead update error:', error); });
     }
 
     // ── Emails pós-compra: apenas cartão aprovado
@@ -312,11 +357,12 @@ export default async function handler(req, res) {
         `Olá ${firstName}, seu pedido foi confirmado e logo sairá para entrega, lembrando que nosso prazo de entrega é de 8 dias`
       ).catch(() => {});
 
+      // A cobrança já foi feita: falha em aviso nunca pode virar erro para o cliente
       await notifyPaymentApproved({
         customerName, customerEmail, customerPhone,
         totalPrice, shippingMethod,
         orderId: order?.id || mpResult.id,
-      });
+      }).catch(e => console.error('notifyPaymentApproved failed (non-fatal):', e));
       schedulePostPurchaseEmails({
         customerName, customerEmail,
         orderId: order?.id || mpResult.id,
@@ -326,6 +372,10 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success:         true,
       status:          paymentStatus,
+      status_detail:   mpResult.status_detail || null,
+      message:         paymentStatus === 'rejected'
+        ? (REJECTION_MESSAGES[mpResult.status_detail] || 'O banco recusou o pagamento. Tente outro cartão ou pague com Pix.')
+        : null,
       id:              mpResult.id,
       orderId:         order?.id || null,
       qr_code:         isPix ? (mpResult.point_of_interaction?.transaction_data?.qr_code        ?? null) : null,

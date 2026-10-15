@@ -41,14 +41,17 @@ export default async function handler(req, res) {
     const mpStatus = mpData.status;
 
     if (mpStatus === 'approved') {
-      // Atualizar Supabase
-      await supabase
+      // Atualiza só se ainda não estava aprovado — quem muda o status é quem avisa o cliente
+      // (o webhook pode ter aprovado no mesmo instante: assim não há aviso duplicado)
+      const { data: changedRows } = await supabase
         .from('orders')
         .update({ status: 'approved' })
-        .eq('mp_payment_id', String(payment_id));
+        .eq('mp_payment_id', String(payment_id))
+        .neq('status', 'approved')
+        .select('id');
+      const changed = (changedRows || []).length > 0;
 
-      // Enviar email + notificações (só se ainda não estava aprovado)
-      if (order) {
+      if (order && changed) {
         const nameParts = (order.customer_name || '').trim().split(/\s+/);
         const addr = order.customer_address || {};
 

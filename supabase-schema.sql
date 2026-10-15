@@ -52,3 +52,9 @@ CREATE INDEX IF NOT EXISTS idx_orders_customer_email   ON orders (customer_email
 -- para todos os papéis, inclusive a chave pública (anon), e exporia CPF,
 -- e-mail, telefone e endereço dos clientes.
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+
+-- Uma única venda adicional (upsell/downsell) ativa por pedido: impede cobrança
+-- dupla quando dois cliques chegam juntos (api/process-upsell.js reserva a vaga antes de cobrar)
+CREATE UNIQUE INDEX IF NOT EXISTS orders_one_active_upsell
+  ON orders ((customer_address->>'upsell_of'))
+  WHERE (customer_address ? 'upsell_of') AND status IN ('pending', 'approved');
