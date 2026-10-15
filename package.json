@@ -1,7 +1,7 @@
 {
-  "name": "loja-solare",
+  "name": "jrvarejo",
   "version": "1.0.0",
-  "description": "Loja Solare e-commerce with Mercado Pago and Supabase",
+  "description": "JR Varejista e-commerce with Mercado Pago and Supabase",
   "private": true,
   "dependencies": {
     "@supabase/supabase-js": "^2.69.0",

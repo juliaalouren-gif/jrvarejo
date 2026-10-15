@@ -112,7 +112,7 @@ export default async function handler(req, res) {
     const bom = '﻿';
     const csv = bom + [headers, ...rows].map(r => r.map(escCsv).join(',')).join('\r\n');
 
-    const filename = `pedidos-solare-${new Date().toISOString().slice(0,10)}.csv`;
+    const filename = `pedidos-jrvarejo-${new Date().toISOString().slice(0,10)}.csv`;
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
