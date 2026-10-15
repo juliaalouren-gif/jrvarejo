@@ -155,9 +155,12 @@ window.selectKit = function(kitQty, kitPrice, kitOldPrice, element) {
     applyKitPricing();
 };
 
+// Mesmo limite de lib/order-pricing.js (MAX_KITS) — acima disso o servidor recusa
+const MAX_KITS = 10;
+
 window.changeKitQty = function(delta) {
     const next = currentKitMultiplier + delta;
-    if (next < 1) return;
+    if (next < 1 || next > MAX_KITS) return;
     currentKitMultiplier = next;
     const display = document.getElementById('kit-qty-display');
     if (display) display.textContent = currentKitMultiplier;

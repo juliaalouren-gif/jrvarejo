@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { notifyPaymentApproved, schedulePostPurchaseEmails } from '../lib/send-notification.js';
 import { sendMetaEvent } from '../lib/meta-capi.js';
 import { sendWhatsApp } from '../lib/whatsapp.js';
-import { expectedOrderTotal, hasPixDiscount } from '../lib/order-pricing.js';
+import { isValidOrderTotal, validOrderTotals } from '../lib/order-pricing.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -40,17 +40,6 @@ export default async function handler(req, res) {
       productType,
     } = req.body;
 
-    // Server-side bump price map — luminaria price varies by product
-    const luminariaPrice = productType === 'led' ? 59.90 : 49.90;
-    const BUMP_PRICES_SERVER = { luminaria: luminariaPrice, refletores: 78.90, envio: 9.90, garantia: 5.90 };
-    const serverBumpTotal = (bumps) => {
-      if (!bumps || typeof bumps !== 'object') return 0;
-      return Object.entries(BUMP_PRICES_SERVER)
-        .filter(([k]) => bumps[k] === true)
-        .reduce((sum, [, v]) => sum + v, 0);
-    };
-    const bumpTotal = serverBumpTotal(orderBumps);
-
     // ── Validação ──────────────────────────────────────────
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const cpfDigits  = String(customerCpf || '').replace(/\D/g, '');
@@ -68,16 +57,17 @@ export default async function handler(req, res) {
     if (isNaN(parsedQty) || parsedQty < 1 || parsedQty > 100)
       return res.status(400).json({ error: 'Quantidade inválida.' });
     // O valor vem do navegador, então é conferido contra a tabela de preços do servidor
-    const expectedTotal = expectedOrderTotal({
+    // (lib/order-pricing.js — kits, "Quantos kits?", adicionais, frete e desconto Pix)
+    const pricedOrder = {
       productType:   productType || 'solar',
       quantity:      parsedQty,
       shippingPrice: shippingPrice,
-      bumpTotal,
-      pixDiscount:   hasPixDiscount(paymentMethodId === 'pix', orderBumps),
-    });
-    if (expectedTotal === null || Math.abs(parsedTotal - expectedTotal) > 0.01) {
+      orderBumps,
+      isPix:         paymentMethodId === 'pix',
+    };
+    if (!isValidOrderTotal(pricedOrder, parsedTotal)) {
       console.warn('[Preço] Pedido recusado por divergência', {
-        productType, quantity: parsedQty, shippingPrice, paymentMethodId, orderBumps, enviado: parsedTotal, esperado: expectedTotal,
+        productType, quantity: parsedQty, shippingPrice, paymentMethodId, orderBumps, enviado: parsedTotal, esperado: validOrderTotals(pricedOrder),
       });
       return res.status(400).json({ error: 'Valor do pedido inválido. Atualize a página e tente novamente.' });
     }
