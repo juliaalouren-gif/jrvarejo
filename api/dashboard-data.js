@@ -5,7 +5,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'solare@2024';
+// Sem senha padrão no código (o repositório é público): sem a variável configurada, o painel fica trancado
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD;
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -14,7 +15,7 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   const { password, from, to, search, status, method, page = 1 } = req.query;
-  if (password !== DASHBOARD_PASSWORD) {
+  if (!DASHBOARD_PASSWORD || password !== DASHBOARD_PASSWORD) {
     return res.status(401).json({ error: 'Senha incorreta.' });
   }
 

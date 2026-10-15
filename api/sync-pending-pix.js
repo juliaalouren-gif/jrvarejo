@@ -15,13 +15,14 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const SYNC_SECRET = process.env.SYNC_SECRET || 'solare-sync-2024';
+// Sem valor padrão no código (o repositório é público): sem a variável configurada, a rota fica trancada
+const SYNC_SECRET = process.env.SYNC_SECRET;
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end();
 
   // Proteção básica por secret
-  if (req.query.secret !== SYNC_SECRET) {
+  if (!SYNC_SECRET || req.query.secret !== SYNC_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
