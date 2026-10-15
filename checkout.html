@@ -17,7 +17,7 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>Finalizar Compra — Solare</title>
+    <title>Finalizar Compra — JR Varejista</title>
     <script src="https://sdk.mercadopago.com/js/v2"></script>
     <!-- Antifraude do Mercado Pago: identifica o aparelho (MP_DEVICE_SESSION_ID) e ajuda a aprovar cartões -->
     <script src="https://www.mercadopago.com/v2/security.js" view="checkout"></script>
@@ -507,6 +507,11 @@
         .product-line img { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border); }
         .product-info h4 { font-size: 13px; font-weight: 600; line-height: 1.3; }
         .product-info p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+        .cart-item-line { display: flex; align-items: center; gap: 11px; margin: -4px 0 14px; }
+        .cart-item-line img { width: 50px; height: 50px; border-radius: 8px; object-fit: contain; background: #fff; border: 1px solid var(--border); }
+        .cart-item-line h4 { font-size: 13px; font-weight: 600; line-height: 1.3; }
+        .cart-item-line p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+        .cart-item-line .cart-item-price { margin-left: auto; font-size: 13px; font-weight: 700; white-space: nowrap; }
 
         .summary-rows { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 8px; }
         .summary-row {
@@ -1030,15 +1035,6 @@
                         </div>
                         <div class="bump-price">+ R$ 49,90</div>
                     </div>
-                    <div class="order-bump" id="bump-refletores" onclick="toggleBump('refletores')">
-                        <div class="bump-check"><i class="fas fa-check"></i></div>
-                        <div class="bump-content">
-                            <span class="bump-badge">OFERTA ESPECIAL</span>
-                            <div class="bump-name">Leve também dois refletores solares</div>
-                            <div class="bump-desc">2 refletores solares por um preço especial</div>
-                        </div>
-                        <div class="bump-price">+ R$ 78,90</div>
-                    </div>
                     <div class="order-bump" id="bump-envio" onclick="toggleBump('envio')">
                         <div class="bump-check"><i class="fas fa-check"></i></div>
                         <div class="bump-content">
@@ -1128,18 +1124,24 @@
                 <i class="fas fa-chevron-down" id="summary-chevron"></i>
             </div>
             <div class="product-line">
-                <img id="sum-img" src="treslumi.jpg" alt="Luminária Solare">
+                <img id="sum-img" src="treslumi.jpg" alt="Luminária Solar de Parede">
                 <div class="product-info">
-                    <h4 id="sum-title">Luminária Solar Solare</h4>
+                    <h4 id="sum-title">Luminária Solar de Parede</h4>
                     <p id="sum-variant">1 unid. — Luz Quente</p>
                 </div>
             </div>
+            <!-- Itens escolhidos no carrinho lateral que não são oferta do checkout (ex.: refletores) -->
+            <div id="sum-cart-items"></div>
             <!-- Detalhes colapsáveis -->
             <div class="summary-collapse" id="summary-details">
                 <div class="summary-rows">
                     <div class="summary-row">
                         <span>Subtotal</span>
                         <span id="sum-subtotal">R$ 8,00</span>
+                    </div>
+                    <div class="summary-row" id="sum-extras-row" style="display:none;">
+                        <span>Adicionais</span>
+                        <span id="sum-extras">—</span>
                     </div>
                     <div class="summary-row">
                         <span>Frete</span>
@@ -1229,8 +1231,8 @@
     const price = parseFloat(urlParams.get('price') || '8.00');
     const light = urlParams.get('light') || 'warm';
     const productType = urlParams.get('product') || 'solar';
-    const productNameMap = { solar: 'Luminária Solar Solare', led: 'Luminária LED Sem Fio Solare', 'lampada-led': 'Lâmpada LED Solar Max', jardim: 'Luminária Solar Externa de Jardim' };
-    const productName = productNameMap[productType] || 'Luminária Solar Solare';
+    const productNameMap = { solar: 'Luminária Solar de Parede', led: 'Kit Luminária LED Sem Fio', 'lampada-led': 'Lâmpada LED Solar Max', jardim: 'Luminária Solar Externa de Jardim' };
+    const productName = productNameMap[productType] || productNameMap.solar;
     let selectedShippingPrice = 0;
     let selectedShippingName = 'Envio Regular (Grátis)';
 
@@ -1307,6 +1309,8 @@
         // Sidebar summary
         document.getElementById('sum-subtotal').textContent = fmt(sub);
         document.getElementById('sum-shipping').textContent = shipTxt;
+        document.getElementById('sum-extras-row').style.display = bumpTotal > 0 ? 'flex' : 'none';
+        document.getElementById('sum-extras').textContent = fmt(bumpTotal);
         document.getElementById('sum-total').textContent = fmt(total);
         document.getElementById('sum-pix-total').textContent = fmt(pixTotal);
 
@@ -1324,6 +1328,16 @@
         if (payBumpsRow) payBumpsRow.style.display = bumpTotal > 0 ? 'flex' : 'none';
         if (payBumpsEl) payBumpsEl.textContent = fmt(bumpTotal);
 
+        // Refletores só existem no carrinho lateral: aparecem no resumo como item já incluído
+        const cartItems = document.getElementById('sum-cart-items');
+        if (cartItems) {
+            cartItems.innerHTML = selectedBumps.refletores
+                ? `<div class="cart-item-line"><img src="refle.png" alt="Refletores solares">
+                     <div><h4>2 Refletores Solares</h4><p>Adicionado no carrinho</p></div>
+                     <span class="cart-item-price">${fmt(BUMP_PRICES.refletores)}</span></div>`
+                : '';
+        }
+
         // Textos do desconto Pix conforme a regra do adicional
         const pixHint = 'Adicione um item acima e ganhe 5% no Pix';
         document.getElementById('pix-tab-badge').style.display = pixOn ? '' : 'none';
@@ -1339,7 +1353,7 @@
     updateTotalDisplay();
     if (productType === 'led') {
         document.getElementById('sum-img').src = 'https://lojaskazamestra.com.br/cdn/shop/files/luminariaLedPilhasPrincipal05_800x.jpg';
-        document.getElementById('sum-title').textContent = 'Luminária LED Sem Fio Solare';
+        document.getElementById('sum-title').textContent = 'Kit Luminária LED Sem Fio';
     } else if (productType === 'lampada-led') {
         document.getElementById('sum-img').src = 'https://userelux.com.br/cdn/shop/files/Disenosintitulo_15_1024x.png?v=1773090670';
         document.getElementById('sum-title').textContent = 'Lâmpada LED Solar Max';
