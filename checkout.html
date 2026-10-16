@@ -507,6 +507,10 @@
         .product-line img { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border); }
         .product-info h4 { font-size: 13px; font-weight: 600; line-height: 1.3; }
         .product-info p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+        .discount-row { color: var(--accent-dark); font-weight: 600; }
+        .discount-row i { color: #f97316; margin-right: 3px; }
+        .total-old { color: var(--muted); font-weight: 500; font-size: 0.8em; margin-right: 6px; }
+        .total-old:empty { display: none; }
         .cart-item-line { display: flex; align-items: center; gap: 11px; margin: -4px 0 14px; }
         .cart-item-line img { width: 50px; height: 50px; border-radius: 8px; object-fit: contain; background: #fff; border: 1px solid var(--border); }
         .cart-item-line h4 { font-size: 13px; font-weight: 600; line-height: 1.3; }
@@ -1051,8 +1055,9 @@
                 <div class="payment-mini-summary">
                     <div class="mini-row"><span>Subtotal</span><span id="pay-sub">R$ 8,00</span></div>
                     <div class="mini-row"><span>Frete</span><span id="pay-ship">Grátis</span></div>
-                    <div class="mini-row" id="pay-bumps-row" style="display:none;"><span>Extras</span><span id="pay-bumps">—</span></div>
-                    <div class="mini-row mini-total"><span>Total</span><span id="pay-total">R$ 8,00</span></div>
+                    <div class="mini-row" id="pay-bumps-row" style="display:none;"><span>Adicionais</span><span id="pay-bumps">—</span></div>
+                    <div class="mini-row discount-row" id="pay-discount-row" style="display:none;"><span><i class="fas fa-bolt"></i> Desconto Pix (5%)</span><span id="pay-discount">—</span></div>
+                    <div class="mini-row mini-total"><span id="pay-total-label">Total</span><span><s class="total-old" id="pay-total-old"></s><span id="pay-total">R$ 8,00</span></span></div>
                     <div class="mini-row mini-pix" id="pay-pix-row">
                         <span><i class="fas fa-bolt" style="color:#f97316;margin-right:4px;"></i><span id="pay-pix-label">Com Pix (5% off)</span></span>
                         <span id="pay-pix">R$ 7,60</span>
@@ -1147,6 +1152,10 @@
                         <span>Frete</span>
                         <span id="sum-shipping">Grátis</span>
                     </div>
+                    <div class="summary-row discount-row" id="sum-discount-row" style="display:none;">
+                        <span><i class="fas fa-bolt"></i> Desconto Pix (5%)</span>
+                        <span id="sum-discount">—</span>
+                    </div>
                 </div>
                 <div class="pix-discount-pill">
                     <span><i class="fas fa-bolt" style="color:#f97316;margin-right:4px;"></i><span id="sum-pix-label">Com Pix (5% off):</span></span>
@@ -1155,8 +1164,8 @@
             </div>
             <!-- Total sempre visível -->
             <div class="summary-row total summary-total-fixed">
-                <span>Total</span>
-                <span id="sum-total">R$ 8,00</span>
+                <span id="sum-total-label">Total</span>
+                <span><s class="total-old" id="sum-total-old"></s><span id="sum-total">R$ 8,00</span></span>
             </div>
             <div class="guarantee-strip">
                 <i class="fas fa-shield-alt"></i>
@@ -1311,8 +1320,19 @@
         document.getElementById('sum-shipping').textContent = shipTxt;
         document.getElementById('sum-extras-row').style.display = bumpTotal > 0 ? 'flex' : 'none';
         document.getElementById('sum-extras').textContent = fmt(bumpTotal);
-        document.getElementById('sum-total').textContent = fmt(total);
         document.getElementById('sum-pix-total').textContent = fmt(pixTotal);
+
+        // Total em destaque = valor que a pessoa vai pagar na forma escolhida.
+        // Pix com desconto liberado: mostra o desconto e o total já com os 5%.
+        const showPixPrice = paymentType === 'pix' && pixOn;
+        const discount     = Math.round((total - pixTotal) * 100) / 100;
+        const totalShown   = showPixPrice ? pixTotal : total;
+        const totalLabel   = showPixPrice ? 'Total no Pix' : 'Total';
+        document.getElementById('sum-total').textContent        = fmt(totalShown);
+        document.getElementById('sum-total-label').textContent  = totalLabel;
+        document.getElementById('sum-total-old').textContent    = showPixPrice ? fmt(total) : '';
+        document.getElementById('sum-discount-row').style.display = showPixPrice ? 'flex' : 'none';
+        document.getElementById('sum-discount').textContent     = '−' + fmt(discount);
 
         // Step-4 mini summary
         const paySub      = document.getElementById('pay-sub');
@@ -1323,31 +1343,52 @@
         const payBumpsEl  = document.getElementById('pay-bumps');
         if (paySub) paySub.textContent = fmt(sub);
         if (payShip) payShip.textContent = shipTxt;
-        if (payTotal) payTotal.textContent = fmt(total);
+        if (payTotal) payTotal.textContent = fmt(totalShown);
+        document.getElementById('pay-total-label').textContent = totalLabel;
+        document.getElementById('pay-total-old').textContent   = showPixPrice ? fmt(total) : '';
+        document.getElementById('pay-discount-row').style.display = showPixPrice ? 'flex' : 'none';
+        document.getElementById('pay-discount').textContent    = '−' + fmt(discount);
         if (payPix) payPix.textContent = fmt(pixTotal);
         if (payBumpsRow) payBumpsRow.style.display = bumpTotal > 0 ? 'flex' : 'none';
         if (payBumpsEl) payBumpsEl.textContent = fmt(bumpTotal);
 
-        // Refletores só existem no carrinho lateral: aparecem no resumo como item já incluído
+        // Itens escolhidos no carrinho lateral aparecem no resumo como já incluídos
+        // (não como caixinha de oferta, para ninguém desmarcar achando que é outra coisa)
         const cartItems = document.getElementById('sum-cart-items');
         if (cartItems) {
-            cartItems.innerHTML = selectedBumps.refletores
-                ? `<div class="cart-item-line"><img src="refle.png" alt="Refletores solares">
+            const lines = [];
+            if (selectedBumps.luminaria && cartAddonKeys.includes('luminaria')) {
+                lines.push(`<div class="cart-item-line"><img src="${document.getElementById('sum-img').src}" alt="Luminárias extras">
+                     <div><h4>${BUMP_CONFIG.name.replace(/^Leve /, '')}</h4><p>Adicionado no carrinho</p></div>
+                     <span class="cart-item-price">${fmt(BUMP_PRICES.luminaria)}</span></div>`);
+            }
+            if (selectedBumps.refletores) {
+                lines.push(`<div class="cart-item-line"><img src="refle.png" alt="Refletores solares">
                      <div><h4>2 Refletores Solares</h4><p>Adicionado no carrinho</p></div>
-                     <span class="cart-item-price">${fmt(BUMP_PRICES.refletores)}</span></div>`
-                : '';
+                     <span class="cart-item-price">${fmt(BUMP_PRICES.refletores)}</span></div>`);
+            }
+            cartItems.innerHTML = lines.join('');
         }
+        // Oferta da luminária no checkout só para quem não a escolheu no carrinho
+        const lumBump = document.getElementById('bump-luminaria');
+        if (lumBump) lumBump.style.display = cartAddonKeys.includes('luminaria') && selectedBumps.luminaria ? 'none' : '';
 
         // Textos do desconto Pix conforme a regra do adicional
-        const pixHint = 'Adicione um item acima e ganhe 5% no Pix';
+        const fromCart = getCartAddons().length > 0;
+        const lumOfferVisible = !(cartAddonKeys.includes('luminaria') && selectedBumps.luminaria);
+        const pixHint = lumOfferVisible ? 'Adicione um item acima e ganhe 5% no Pix' : 'Leve um adicional e ganhe 5% no Pix';
         document.getElementById('pix-tab-badge').style.display = pixOn ? '' : 'none';
         document.getElementById('pay-pix-label').textContent = pixOn ? 'Com Pix (5% off)' : pixHint;
         if (payPix) payPix.style.display = pixOn ? '' : 'none';
-        document.getElementById('sum-pix-label').textContent = pixOn ? 'Com Pix (5% off):' : 'Adicione um item e ganhe 5% no Pix';
+        const payPixRow = document.getElementById('pay-pix-row');
+        if (payPixRow) payPixRow.style.display = (paymentType === 'pix' && !pixOn) ? 'flex' : 'none';
+        document.getElementById('sum-pix-label').textContent = pixOn ? 'No Pix sai por:' : 'Adicione um item e ganhe 5% no Pix';
         document.getElementById('sum-pix-total').style.display = pixOn ? '' : 'none';
+        const sumPill = document.querySelector('.pix-discount-pill');
+        if (sumPill) sumPill.style.display = showPixPrice ? 'none' : 'flex';
         document.getElementById('pix-info-title').textContent = pixOn
-            ? '5% de desconto aplicado no Pix!'
-            : 'Adicione um item ao pedido e ganhe 5% de desconto no Pix';
+            ? (fromCart ? '5% de desconto no Pix liberado pelo item que você adicionou no carrinho!' : '5% de desconto no Pix liberado pelo item adicional!')
+            : 'Leve um item adicional e ganhe 5% de desconto no Pix';
     }
 
     updateTotalDisplay();
@@ -1363,6 +1404,7 @@
     } else {
         document.getElementById('sum-img').src = light === 'warm' ? 'treslumi.jpg' : 'luminaria-white.jpg';
     }
+    updateTotalDisplay(); // de novo, agora com a foto do produto (usada nos itens do carrinho)
 
     // ── RESUMO COLAPSÁVEL ──────────────────────────────────
     window.toggleSummary = function() {
@@ -1624,8 +1666,7 @@
         document.getElementById('tab-card').classList.toggle('active', type === 'card');
         document.getElementById('pix-info').style.display = type === 'pix' ? 'block' : 'none';
         document.getElementById('card-payment-form').style.display = type === 'card' ? 'block' : 'none';
-        const pixRow = document.getElementById('pay-pix-row');
-        if (pixRow) pixRow.style.display = type === 'pix' ? 'flex' : 'none';
+        updateTotalDisplay(); // total em destaque muda conforme Pix/cartão
         if (type === 'card') {
             populateInstallments();
             initCardFields().catch(e => console.error('Secure Fields:', e));
