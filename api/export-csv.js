@@ -33,7 +33,7 @@ function fmtAddress(addr) {
   try {
     const a = typeof addr === 'string' ? JSON.parse(addr) : addr;
     const parts = [];
-    if (a.street)       parts.push(a.street + (a.number ? ', ' + a.number : ''));
+    if (a.street)       parts.push(a.street + (a.number ? ', ' + a.number : '') + (a.complement ? ' — ' + a.complement : ''));
     if (a.neighborhood) parts.push(a.neighborhood);
     if (a.city)         parts.push(a.city + (a.state ? ' - ' + a.state : ''));
     if (a.cep)          parts.push('CEP: ' + a.cep);

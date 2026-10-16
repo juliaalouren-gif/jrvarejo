@@ -584,10 +584,12 @@
     const a = typeof addr === 'string' ? JSON.parse(addr) : addr;
     const parts = [];
     if (a.street)       parts.push(a.street + (a.number ? ', ' + a.number : ''));
+    if (a.complement)   parts.push('Compl.: ' + a.complement);
     if (a.neighborhood) parts.push(a.neighborhood);
     if (a.city)         parts.push(a.city + (a.state ? ' - ' + a.state : ''));
     if (a.cep)          parts.push('CEP: ' + a.cep);
-    return parts.join('<br>') || '—';
+    // Texto digitado pelo cliente: sempre escapado antes de ir para o HTML
+    return parts.map(esc).join('<br>') || '—';
   }
 
   function renderTable(orders) {
