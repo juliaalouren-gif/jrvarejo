@@ -293,6 +293,15 @@
         });
         render();
 
+        // Google Ads: conversão "Adicionar ao carrinho" com o valor do kit escolhido
+        if (typeof window.gtag === 'function') {
+            window.gtag('event', 'conversion', {
+                'send_to': 'AW-18516217267/J7juCPCQw54dELObnP1E',
+                'value': price,
+                'currency': 'BRL'
+            });
+        }
+
         // Força o navegador a aplicar o estado inicial antes de animar a entrada
         void $('jr-cart').offsetWidth;
         $('jr-cart').classList.add('open');
