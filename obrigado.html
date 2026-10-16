@@ -2,13 +2,16 @@
 <html lang="pt-BR">
 <head>
 <script>(function addScript() { var script = document.createElement("script"); script.src = "https://planweb.app/scripts/dist/stories-videos.js?licenseId=21539"; script.type = "text/javascript"; script.async = true; script.charset = "UTF-8"; document.head.appendChild(script); })();</script>
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=AW-17714329725"></script>
+    <!-- Google tag (gtag.js) — Google Ads da JR Varejista -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18516217267"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
-      gtag('config', 'AW-17714329725');
+
+      gtag('config', 'AW-18516217267');
+      // Conversão de COMPRA: preencher com 'AW-18516217267/RÓTULO' da ação "Compra" do Google Ads
+      window.GADS_PURCHASE_SEND_TO = '';
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -182,12 +185,15 @@
             if (typeof ttq !== 'undefined') {
                 ttq.track('Purchase', { contents: [{ content_id: 'solare-luminaria', content_type: 'product', content_name: 'Luminária Solar Solare' }], value: orderTotal, currency: 'BRL' });
             }
-            gtag('event', 'conversion', {
-                'send_to': 'AW-17714329725/033BCIzz6JwcEP3w7P5B',
-                'value': orderTotal,
-                'currency': 'BRL',
-                'transaction_id': paymentId
-            });
+            // Conversão de compra no Google Ads da JR Varejista (ativa quando o rótulo for preenchido no <head>)
+            if (window.GADS_PURCHASE_SEND_TO && typeof gtag === 'function') {
+                gtag('event', 'conversion', {
+                    'send_to': window.GADS_PURCHASE_SEND_TO,
+                    'value': orderTotal,
+                    'currency': 'BRL',
+                    'transaction_id': paymentId
+                });
+            }
         }
     }
     // Cartão: NÃO dispara aqui — já foi disparado em checkout.html antes do redirect
