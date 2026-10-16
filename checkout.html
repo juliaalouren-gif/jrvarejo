@@ -1030,14 +1030,14 @@
                 <!-- ORDER BUMPS -->
                 <div id="order-bumps">
                     <p class="bumps-label"><i class="fas fa-gift"></i> Adicione ao seu pedido:</p>
-                    <div class="order-bump" id="bump-luminaria" onclick="toggleBump('luminaria')">
+                    <div class="order-bump" id="bump-luminaria_bump" onclick="toggleBump('luminaria_bump')">
                         <div class="bump-check"><i class="fas fa-check"></i></div>
                         <div class="bump-content">
                             <span class="bump-badge">MAIS VENDIDO</span>
                             <div class="bump-name">Leve +2 Luminárias Solares</div>
                             <div class="bump-desc">Leve mais 2 unidades com desconto exclusivo</div>
                         </div>
-                        <div class="bump-price">+ R$ 49,90</div>
+                        <div class="bump-price">+ R$ 39,90</div>
                     </div>
                     <div class="order-bump" id="bump-envio" onclick="toggleBump('envio')">
                         <div class="bump-check"><i class="fas fa-check"></i></div>
@@ -1246,19 +1246,27 @@
     let selectedShippingName = 'Envio Regular (Grátis)';
 
     // ── ORDER BUMPS ───────────────────────────────────────
+    // Luminárias extras existem em dois lugares, com preços diferentes
+    // (precisam bater com cart-drawer.js e lib/order-pricing.js):
+    //   "luminaria"      → escolhida no carrinho lateral (R$ 49,90)
+    //   "luminaria_bump" → order bump do checkout (R$ 39,90)
+    const CART_LUM = productType === 'led'
+        ? { name: '+3 Luminárias LED', price: 59.90 }
+        : { name: '+2 Luminárias Solares', price: 49.90 };
     const BUMP_CONFIG = productType === 'led'
         ? { name: 'Leve +3 Luminárias LED', desc: 'Leve mais 3 unidades com desconto exclusivo', price: 59.90 }
-        : { name: 'Leve +2 Luminárias Solares', desc: 'Leve mais 2 unidades com desconto exclusivo', price: 49.90 };
+        : { name: 'Leve +2 Luminárias Solares', desc: 'Oferta exclusiva do checkout: mais 2 unidades', price: 39.90 };
     // Atualiza o HTML do bump conforme o produto
     (function() {
-        const el = document.getElementById('bump-luminaria');
+        const el = document.getElementById('bump-luminaria_bump');
         if (!el) return;
         el.querySelector('.bump-name').textContent = BUMP_CONFIG.name;
         el.querySelector('.bump-desc').textContent = BUMP_CONFIG.desc;
         el.querySelector('.bump-price').textContent = '+ R$ ' + BUMP_CONFIG.price.toFixed(2).replace('.', ',');
     })();
-    const BUMP_PRICES = { luminaria: BUMP_CONFIG.price, refletores: 78.90, envio: 9.90 };
-    let selectedBumps  = { luminaria: false, refletores: false, envio: false };
+    const BUMP_PRICES = { luminaria: CART_LUM.price, refletores: 78.90, luminaria_bump: BUMP_CONFIG.price, envio: 9.90 };
+    // A ordem das chaves é a mesma de bumpPrices() no servidor (a soma precisa dar exatamente igual)
+    let selectedBumps  = { luminaria: false, refletores: false, luminaria_bump: false, envio: false };
 
     // Adicionais escolhidos no carrinho lateral (cart-drawer.js) já chegam marcados
     (urlParams.get('bumps') || '').split(',').forEach(function(key) {
@@ -1275,7 +1283,7 @@
     function getCartAddons() { return cartAddonKeys.filter(k => selectedBumps[k]); }
 
     function hasPixDiscount() {
-        return selectedBumps.luminaria || selectedBumps.refletores;
+        return selectedBumps.luminaria || selectedBumps.refletores || selectedBumps.luminaria_bump;
     }
 
     function getPixTotal() {
@@ -1357,9 +1365,9 @@
         const cartItems = document.getElementById('sum-cart-items');
         if (cartItems) {
             const lines = [];
-            if (selectedBumps.luminaria && cartAddonKeys.includes('luminaria')) {
+            if (selectedBumps.luminaria) {
                 lines.push(`<div class="cart-item-line"><img src="${document.getElementById('sum-img').src}" alt="Luminárias extras">
-                     <div><h4>${BUMP_CONFIG.name.replace(/^Leve /, '')}</h4><p>Adicionado no carrinho</p></div>
+                     <div><h4>${CART_LUM.name}</h4><p>Adicionado no carrinho</p></div>
                      <span class="cart-item-price">${fmt(BUMP_PRICES.luminaria)}</span></div>`);
             }
             if (selectedBumps.refletores) {
@@ -1369,14 +1377,11 @@
             }
             cartItems.innerHTML = lines.join('');
         }
-        // Oferta da luminária no checkout só para quem não a escolheu no carrinho
-        const lumBump = document.getElementById('bump-luminaria');
-        if (lumBump) lumBump.style.display = cartAddonKeys.includes('luminaria') && selectedBumps.luminaria ? 'none' : '';
+
 
         // Textos do desconto Pix conforme a regra do adicional
         const fromCart = getCartAddons().length > 0;
-        const lumOfferVisible = !(cartAddonKeys.includes('luminaria') && selectedBumps.luminaria);
-        const pixHint = lumOfferVisible ? 'Adicione um item acima e ganhe 5% no Pix' : 'Leve um adicional e ganhe 5% no Pix';
+        const pixHint = 'Adicione um item acima e ganhe 5% no Pix';
         document.getElementById('pix-tab-badge').style.display = pixOn ? '' : 'none';
         document.getElementById('pay-pix-label').textContent = pixOn ? 'Com Pix (5% off)' : pixHint;
         if (payPix) payPix.style.display = pixOn ? '' : 'none';

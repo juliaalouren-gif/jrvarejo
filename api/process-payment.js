@@ -37,7 +37,7 @@ const REJECTION_MESSAGES = {
   cc_rejected_other_reason:             'O banco recusou o pagamento. Tente outro cartão ou pague com Pix.',
 };
 
-const ADDON_LABELS = { luminaria: 'luminárias extras', refletores: '2 refletores solares', envio: 'envio priorizado', garantia: 'garantia estendida' };
+const ADDON_LABELS = { luminaria: 'luminárias extras', luminaria_bump: 'luminárias extras (oferta do checkout)', refletores: '2 refletores solares', envio: 'envio priorizado', garantia: 'garantia estendida' };
 const MP_BASE = 'https://api.mercadopago.com';
 
 export default async function handler(req, res) {
