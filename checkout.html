@@ -1410,6 +1410,19 @@
     }
     updateTotalDisplay(); // de novo, agora com a foto do produto (usada nos itens do carrinho)
 
+    // Google Ads: conversão "Iniciar finalização de compra" ao abrir o checkout, com o valor
+    // do carrinho (kit + adicionais). Recarregar a mesma página não conta de novo.
+    (function () {
+        if (typeof gtag !== 'function') return;
+        const key = 'gads_begin_checkout_' + window.location.search;
+        try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch (e) {}
+        gtag('event', 'conversion', {
+            'send_to': 'AW-18516217267/2KqlCOK8xZ4dELObnP1E',
+            'value': Math.round((price + selectedShippingPrice + getBumpTotal()) * 100) / 100,
+            'currency': 'BRL'
+        });
+    })();
+
     // ── RESUMO COLAPSÁVEL ──────────────────────────────────
     window.toggleSummary = function() {
         const details = document.getElementById('summary-details');
