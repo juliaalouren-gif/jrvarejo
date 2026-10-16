@@ -10,8 +10,9 @@
       gtag('js', new Date());
 
       gtag('config', 'AW-18516217267');
-      // Conversão de COMPRA: preencher com 'AW-18516217267/RÓTULO' da ação "Compra" do Google Ads
-      window.GADS_PURCHASE_SEND_TO = '';
+      gtag('event', 'conversion', {'send_to': 'AW-18516217267/yvSlCIfuwZ4dELObnP1E'}); // conversão "Visualização de página"
+      // Conversão de compra do Google Ads (ação "Comprou")
+      window.GADS_PURCHASE_SEND_TO = 'AW-18516217267/19vBCK-5wZ4dELObnP1E'; // ação "Comprou"
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -185,16 +186,23 @@
             if (typeof ttq !== 'undefined') {
                 ttq.track('Purchase', { contents: [{ content_id: 'solare-luminaria', content_type: 'product', content_name: 'Luminária Solar Solare' }], value: orderTotal, currency: 'BRL' });
             }
-            // Conversão de compra no Google Ads da JR Varejista (ativa quando o rótulo for preenchido no <head>)
-            if (window.GADS_PURCHASE_SEND_TO && typeof gtag === 'function') {
-                gtag('event', 'conversion', {
-                    'send_to': window.GADS_PURCHASE_SEND_TO,
-                    'value': orderTotal,
-                    'currency': 'BRL',
-                    'transaction_id': paymentId
-                });
-            }
         }
+        // Google Ads: Pix gerado já conta como compra (decisão da loja). Uma vez por pagamento —
+        // quando o Pix for pago depois, a mesma conversão não é enviada de novo.
+        trackGadsPurchase(orderTotal, paymentId);
+    }
+
+    // Conversão de compra no Google Ads — uma vez por pagamento (ID do Mercado Pago)
+    function trackGadsPurchase(value, transactionId) {
+        if (!window.GADS_PURCHASE_SEND_TO || typeof gtag !== 'function' || !transactionId) return;
+        const key = 'gads_purchase_' + transactionId;
+        try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch (e) {}
+        gtag('event', 'conversion', {
+            'send_to': window.GADS_PURCHASE_SEND_TO,
+            'value': value,
+            'currency': 'BRL',
+            'transaction_id': String(transactionId)
+        });
     }
     // Cartão: NÃO dispara aqui — já foi disparado em checkout.html antes do redirect
 
@@ -276,6 +284,7 @@
                     clearInterval(interval);
                     document.getElementById('status-icon').className = 'icon success';
                     document.getElementById('status-icon').innerHTML = '<i class="fas fa-check-circle"></i>';
+                    trackGadsPurchase(orderTotal, id);
                     document.getElementById('status-title').innerText = 'Pagamento Aprovado!';
                     document.getElementById('status-desc').innerText = 'Obrigado pela sua compra. Seu pedido será enviado em breve.';
                 } else if (data.status === 'rejected' || data.status === 'cancelled') {
@@ -303,6 +312,7 @@
 
                 if (data.status === 'approved') {
                     clearInterval(interval);
+                    trackGadsPurchase(orderTotal, id);
                     if (shouldOfferUpsell()) {
                         goToPixUpsell();
                     } else {
